@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import type { AccessPoint, Wall, Band } from '../types';
 import { generateHeatmap, type CoverageStats } from '../utils/signalSimulation';
+import { useWasmEngine } from '../context/WasmContext';
 
 type UseHeatmapOptions = {
   width: number;
@@ -14,6 +15,12 @@ type UseHeatmapOptions = {
   onStatsUpdate?: (stats: CoverageStats) => void;
 };
 
+/**
+ * Renders a WiFi coverage heatmap onto a canvas element.
+ *
+ * Uses the Rust/WASM engine when available for faster computation,
+ * transparently falling back to the JS implementation otherwise.
+ */
 export function useHeatmap(
   canvasRef: React.RefObject<HTMLCanvasElement>,
   options: UseHeatmapOptions,
@@ -23,6 +30,7 @@ export function useHeatmap(
     pixelsPerMeter, band, enabled, onStatsUpdate,
   } = options;
 
+  const { engine } = useWasmEngine();
   const workerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statsRef = useRef<CoverageStats | null>(null);
 
@@ -38,32 +46,49 @@ export function useHeatmap(
       return;
     }
 
-    const { imageData, stats } = generateHeatmap(
-      width, height, resolution,
-      accessPoints, walls, pixelsPerMeter, band,
-    );
+    let imageData: ImageData;
+    let stats: CoverageStats;
+
+    if (engine) {
+      // ── WASM path (Rust propagation engine) ────────────────────────────────
+      const result = engine.generateHeatmap(
+        width, height, resolution,
+        accessPoints, walls, pixelsPerMeter, band,
+      );
+      imageData = result.imageData;
+      stats = result.stats;
+    } else {
+      // ── JS fallback ─────────────────────────────────────────────────────────
+      const result = generateHeatmap(
+        width, height, resolution,
+        accessPoints, walls, pixelsPerMeter, band,
+      );
+      imageData = result.imageData;
+      stats = result.stats;
+    }
 
     statsRef.current = stats;
     if (onStatsUpdate) onStatsUpdate(stats);
 
-    // Create a temporary canvas to hold the small heatmap, then scale it up
+    // Paint the low-res heatmap onto a temporary canvas, then scale it up
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = Math.ceil(width / resolution);
-    tempCanvas.height = Math.ceil(height / resolution);
+    tempCanvas.width = imageData.width;
+    tempCanvas.height = imageData.height;
     const tempCtx = tempCanvas.getContext('2d')!;
     tempCtx.putImageData(imageData, 0, 0);
 
-    // Scale up with smooth interpolation
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(tempCanvas, 0, 0, width, height);
-  }, [width, height, resolution, accessPoints, walls, pixelsPerMeter, band, enabled, onStatsUpdate, canvasRef]);
+  }, [
+    engine, width, height, resolution,
+    accessPoints, walls, pixelsPerMeter, band,
+    enabled, onStatsUpdate, canvasRef,
+  ]);
 
   useEffect(() => {
-    // Debounce heatmap generation for performance
     if (workerRef.current) clearTimeout(workerRef.current);
     workerRef.current = setTimeout(redraw, 100);
-
     return () => {
       if (workerRef.current) clearTimeout(workerRef.current);
     };

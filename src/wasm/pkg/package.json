@@ -1,0 +1,19 @@
+{
+  "name": "wifi-planner-wasm",
+  "type": "module",
+  "description": "WiFi signal propagation engine compiled to WebAssembly",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "wifi_planner_wasm_bg.wasm",
+    "wifi_planner_wasm.js",
+    "wifi_planner_wasm_bg.js",
+    "wifi_planner_wasm.d.ts"
+  ],
+  "main": "wifi_planner_wasm.js",
+  "types": "wifi_planner_wasm.d.ts",
+  "sideEffects": [
+    "./wifi_planner_wasm.js",
+    "./snippets/*"
+  ]
+}

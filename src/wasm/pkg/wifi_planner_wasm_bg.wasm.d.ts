@@ -1,0 +1,30 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const __wbg_get_heatmapresult_cols: (a: number) => number;
+export const __wbg_get_heatmapresult_excellent_count: (a: number) => number;
+export const __wbg_get_heatmapresult_fair_count: (a: number) => number;
+export const __wbg_get_heatmapresult_good_count: (a: number) => number;
+export const __wbg_get_heatmapresult_no_coverage_count: (a: number) => number;
+export const __wbg_get_heatmapresult_poor_count: (a: number) => number;
+export const __wbg_get_heatmapresult_rows: (a: number) => number;
+export const __wbg_get_heatmapresult_total_count: (a: number) => number;
+export const __wbg_heatmapresult_free: (a: number, b: number) => void;
+export const __wbg_set_heatmapresult_cols: (a: number, b: number) => void;
+export const __wbg_set_heatmapresult_excellent_count: (a: number, b: number) => void;
+export const __wbg_set_heatmapresult_fair_count: (a: number, b: number) => void;
+export const __wbg_set_heatmapresult_good_count: (a: number, b: number) => void;
+export const __wbg_set_heatmapresult_no_coverage_count: (a: number, b: number) => void;
+export const __wbg_set_heatmapresult_poor_count: (a: number, b: number) => void;
+export const __wbg_set_heatmapresult_rows: (a: number, b: number) => void;
+export const __wbg_set_heatmapresult_total_count: (a: number, b: number) => void;
+export const compute_heatmap: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
+export const heatmapresult_avg_rssi: (a: number) => number;
+export const heatmapresult_pixels: (a: number) => [number, number];
+export const point_rssi: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
+export const init_panic_hook: () => void;
+export const __wbindgen_free: (a: number, b: number, c: number) => void;
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_externrefs: WebAssembly.Table;
+export const __wbindgen_start: () => void;

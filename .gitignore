@@ -3,3 +3,6 @@ dist/
 .env
 .env.local
 *.local
+
+# Rust build artifacts (keep src/wasm/pkg committed so CI doesn't need wasm-pack)
+wasm-engine/target/
