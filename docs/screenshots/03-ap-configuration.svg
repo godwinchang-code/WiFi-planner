@@ -1,0 +1,196 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" width="1280" height="800" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <filter id="sh3" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.15"/>
+    </filter>
+    <radialGradient id="hh" cx="38%" cy="38%" r="35%">
+      <stop offset="0%" stop-color="#00c800" stop-opacity="0.7"/>
+      <stop offset="50%" stop-color="#c8c800" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#dc6400" stop-opacity="0.2"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1280" height="800" fill="#f1f5f9"/>
+
+  <!-- Sidebar -->
+  <rect x="0" y="0" width="288" height="800" fill="white" filter="url(#sh3)"/>
+  <rect x="0" y="0" width="288" height="56" fill="#2563eb"/>
+  <g transform="translate(16,28)" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+    <path d="M-10,-6 A14,14 0 0,1 10,-6"/>
+    <path d="M-7,-1 A9,9 0 0,1 7,-1"/>
+    <path d="M-4,4 A5,5 0 0,1 4,4"/>
+    <circle cx="0" cy="8" r="2" fill="white" stroke="none"/>
+  </g>
+  <text x="46" y="24" fill="white" font-size="15" font-weight="700">WiFi Planner</text>
+  <text x="46" y="40" fill="#93c5fd" font-size="11">Network Coverage Planning</text>
+  <circle cx="265" cy="24" r="4" fill="#4ade80"/>
+  <text x="272" y="28" fill="#86efac" font-size="11" font-weight="500">WASM</text>
+
+  <!-- Scale -->
+  <text x="12" y="76" fill="#6b7280" font-size="10" font-weight="600" letter-spacing="0.5">FLOOR PLAN SCALE</text>
+  <text x="12" y="94" fill="#374151" font-size="11">px / meter:</text>
+  <rect x="80" y="82" width="50" height="22" rx="4" fill="white" stroke="#d1d5db" stroke-width="1"/>
+  <text x="105" y="97" fill="#374151" font-size="12" text-anchor="middle">20</text>
+
+  <!-- AP list header -->
+  <text x="12" y="122" fill="#6b7280" font-size="10" font-weight="600" letter-spacing="0.5">ACCESS POINTS (3)</text>
+
+  <!-- AP 1 (selected) -->
+  <rect x="12" y="130" width="264" height="40" rx="8" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+  <circle cx="28" cy="150" r="6" fill="#3b82f6"/>
+  <text x="42" y="146" fill="#1e40af" font-size="12" font-weight="600">AP 1</text>
+  <text x="42" y="160" fill="#6b7280" font-size="10">2.4GHz · ch 6 · 20dBm</text>
+  <!-- eye + delete -->
+  <text x="224" y="154" fill="#6b7280" font-size="14">👁</text>
+  <text x="244" y="154" fill="#9ca3af" font-size="14">🗑</text>
+  <text x="270" y="154" fill="#9ca3af" font-size="13">∧</text>
+
+  <!-- AP 2, AP 3 (collapsed) -->
+  <rect x="12" y="174" width="264" height="36" rx="8" fill="#f9fafb"/>
+  <circle cx="28" cy="192" r="6" fill="#10b981"/>
+  <text x="42" y="188" fill="#374151" font-size="12" font-weight="600">AP 2</text>
+  <text x="42" y="201" fill="#6b7280" font-size="10">5GHz · ch 36 · 23dBm</text>
+  <rect x="12" y="214" width="264" height="36" rx="8" fill="#f9fafb"/>
+  <circle cx="28" cy="232" r="6" fill="#f59e0b"/>
+  <text x="42" y="228" fill="#374151" font-size="12" font-weight="600">AP 3</text>
+  <text x="42" y="241" fill="#6b7280" font-size="10">2.4GHz · ch 1 · 20dBm</text>
+
+  <!-- ───── AP Detail Panel ───── -->
+  <rect x="12" y="258" width="264" height="530" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+  <text x="22" y="278" fill="#1d4ed8" font-size="10" font-weight="700" letter-spacing="0.5">CONFIGURE: AP 1</text>
+
+  <!-- Name -->
+  <text x="22" y="298" fill="#374151" font-size="11" font-weight="500">Name</text>
+  <rect x="22" y="304" width="240" height="28" rx="6" fill="white" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="34" y="322" fill="#1e293b" font-size="13">AP 1</text>
+
+  <!-- Band -->
+  <text x="22" y="348" fill="#374151" font-size="11" font-weight="500">Frequency Band</text>
+  <rect x="22" y="354" width="76" height="28" rx="6" fill="#2563eb"/>
+  <text x="60" y="372" fill="white" font-size="12" text-anchor="middle" font-weight="500">2.4GHz</text>
+  <rect x="102" y="354" width="76" height="28" rx="6" fill="white" stroke="#d1d5db" stroke-width="1"/>
+  <text x="140" y="372" fill="#374151" font-size="12" text-anchor="middle">5GHz</text>
+  <rect x="182" y="354" width="76" height="28" rx="6" fill="white" stroke="#d1d5db" stroke-width="1"/>
+  <text x="220" y="372" fill="#374151" font-size="12" text-anchor="middle">6GHz</text>
+
+  <!-- Channel -->
+  <text x="22" y="400" fill="#374151" font-size="11" font-weight="500">Channel</text>
+  <rect x="22" y="406" width="240" height="28" rx="6" fill="white" stroke="#d1d5db" stroke-width="1"/>
+  <text x="34" y="424" fill="#1e293b" font-size="13">6</text>
+  <text x="250" y="424" fill="#9ca3af" font-size="14" text-anchor="end">▾</text>
+
+  <!-- TX Power -->
+  <text x="22" y="452" fill="#374151" font-size="11" font-weight="500">TX Power</text>
+  <text x="262" y="452" fill="#6b7280" font-size="10" text-anchor="end">20 dBm (100 mW)</text>
+  <!-- Slider track -->
+  <rect x="22" y="458" width="240" height="5" rx="2.5" fill="#e2e8f0"/>
+  <rect x="22" y="458" width="146" height="5" rx="2.5" fill="#2563eb"/>
+  <circle cx="168" cy="460.5" r="8" fill="white" stroke="#2563eb" stroke-width="2"/>
+  <text x="22" y="480" fill="#9ca3af" font-size="10">0 dBm (1mW)</text>
+  <text x="262" y="480" fill="#9ca3af" font-size="10" text-anchor="end">33 dBm (2W)</text>
+
+  <!-- Antenna Gain -->
+  <text x="22" y="502" fill="#374151" font-size="11" font-weight="500">Antenna Gain</text>
+  <text x="262" y="502" fill="#6b7280" font-size="10" text-anchor="end">2 dBi</text>
+  <rect x="22" y="508" width="240" height="5" rx="2.5" fill="#e2e8f0"/>
+  <rect x="22" y="508" width="34" height="5" rx="2.5" fill="#2563eb"/>
+  <circle cx="56" cy="510.5" r="8" fill="white" stroke="#2563eb" stroke-width="2"/>
+  <text x="22" y="530" fill="#9ca3af" font-size="10">0 dBi (omni)</text>
+  <text x="262" y="530" fill="#9ca3af" font-size="10" text-anchor="end">15 dBi (directional)</text>
+
+  <!-- Position -->
+  <text x="22" y="552" fill="#374151" font-size="11" font-weight="500">X (px)</text>
+  <text x="142" y="552" fill="#374151" font-size="11" font-weight="500">Y (px)</text>
+  <rect x="22" y="558" width="112" height="26" rx="5" fill="white" stroke="#d1d5db" stroke-width="1"/>
+  <text x="34" y="575" fill="#1e293b" font-size="12">300</text>
+  <rect x="142" y="558" width="112" height="26" rx="5" fill="white" stroke="#d1d5db" stroke-width="1"/>
+  <text x="154" y="575" fill="#1e293b" font-size="12">220</text>
+
+  <!-- Color -->
+  <text x="22" y="602" fill="#374151" font-size="11" font-weight="500">Color</text>
+  <rect x="22" y="608" width="240" height="30" rx="6" fill="#3b82f6" stroke="#d1d5db" stroke-width="1" cursor="pointer"/>
+  <text x="142" y="628" fill="white" font-size="11" text-anchor="middle" opacity="0.8">Click to change…</text>
+
+  <!-- Colour swatches row -->
+  <g transform="translate(22,650)">
+    <circle cx="15"  cy="12" r="10" fill="#3b82f6" stroke="white" stroke-width="2"/>
+    <circle cx="43"  cy="12" r="10" fill="#10b981"/>
+    <circle cx="71"  cy="12" r="10" fill="#f59e0b"/>
+    <circle cx="99"  cy="12" r="10" fill="#ef4444"/>
+    <circle cx="127" cy="12" r="10" fill="#8b5cf6"/>
+    <circle cx="155" cy="12" r="10" fill="#ec4899"/>
+    <circle cx="183" cy="12" r="10" fill="#06b6d4"/>
+    <circle cx="211" cy="12" r="10" fill="#84cc16"/>
+  </g>
+
+  <!-- ═══ CANVAS ═══ -->
+  <rect x="288" y="0" width="992" height="800" fill="#f8fafc"/>
+  <rect x="308" y="20" width="952" height="760" rx="4" fill="white" stroke="#e2e8f0" stroke-width="1.5" filter="url(#sh3)"/>
+
+  <!-- Grid -->
+  <g stroke="#e2e8f0" stroke-width="0.4" opacity="0.7">
+    <line x1="348" y1="20" x2="348" y2="780"/><line x1="388" y1="20" x2="388" y2="780"/>
+    <line x1="428" y1="20" x2="428" y2="780"/><line x1="468" y1="20" x2="468" y2="780"/>
+    <line x1="508" y1="20" x2="508" y2="780"/><line x1="548" y1="20" x2="548" y2="780"/>
+    <line x1="588" y1="20" x2="588" y2="780"/><line x1="628" y1="20" x2="628" y2="780"/>
+    <line x1="668" y1="20" x2="668" y2="780"/><line x1="708" y1="20" x2="708" y2="780"/>
+    <line x1="748" y1="20" x2="748" y2="780"/><line x1="788" y1="20" x2="788" y2="780"/>
+    <line x1="308" y1="60" x2="1260" y2="60"/><line x1="308" y1="100" x2="1260" y2="100"/>
+    <line x1="308" y1="140" x2="1260" y2="140"/><line x1="308" y1="180" x2="1260" y2="180"/>
+    <line x1="308" y1="220" x2="1260" y2="220"/><line x1="308" y1="260" x2="1260" y2="260"/>
+    <line x1="308" y1="300" x2="1260" y2="300"/><line x1="308" y1="340" x2="1260" y2="340"/>
+    <line x1="308" y1="380" x2="1260" y2="380"/><line x1="308" y1="420" x2="1260" y2="420"/>
+    <line x1="308" y1="460" x2="1260" y2="460"/><line x1="308" y1="500" x2="1260" y2="500"/>
+  </g>
+
+  <rect x="308" y="20" width="952" height="760" fill="url(#hh)" rx="4" opacity="0.7"/>
+
+  <!-- Walls -->
+  <g stroke-linecap="round">
+    <rect x="380" y="80" width="560" height="420" fill="none" stroke="#1e293b" stroke-width="6"/>
+    <line x1="560" y1="80" x2="560" y2="320" stroke="#475569" stroke-width="4"/>
+    <line x1="380" y1="320" x2="780" y2="320" stroke="#475569" stroke-width="4"/>
+    <line x1="780" y1="80" x2="780" y2="500" stroke="#475569" stroke-width="4"/>
+  </g>
+
+  <!-- AP 1 (selected) with full rings -->
+  <g transform="translate(548,192)">
+    <circle r="38" fill="none" stroke="white" stroke-width="2" stroke-dasharray="5,3"/>
+    <circle r="26" fill="#3b82f6" fill-opacity="0.1" stroke="#3b82f6" stroke-opacity="0.3" stroke-width="1"/>
+    <circle r="20" fill="#3b82f6" stroke="white" stroke-width="2.5"/>
+    <g fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round">
+      <path d="M-9,-5 A12,12 0 0,1 9,-5"/>
+      <path d="M-6,0 A8,8 0 0,1 6,0"/>
+      <path d="M-3,5 A4,4 0 0,1 3,5"/>
+      <circle cx="0" cy="9" r="1.8" fill="white" stroke="none"/>
+    </g>
+    <text y="38" text-anchor="middle" font-size="12" fill="#1e293b" font-weight="700" stroke="white" stroke-width="3" paint-order="stroke">AP 1</text>
+    <text y="50" text-anchor="middle" font-size="10" fill="#475569" stroke="white" stroke-width="2" paint-order="stroke">2.4GHz · ch 6 · 20dBm</text>
+  </g>
+
+  <!-- Callout line from AP to config panel -->
+  <line x1="548" y1="192" x2="288" y2="400" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5"/>
+  <circle cx="548" cy="192" r="4" fill="#3b82f6" opacity="0.5"/>
+
+  <!-- AP 2, AP 3 -->
+  <g transform="translate(830,180)">
+    <circle r="20" fill="#10b981"/>
+    <g fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
+      <path d="M-9,-5 A12,12 0 0,1 9,-5"/>
+      <path d="M-6,0 A8,8 0 0,1 6,0"/>
+      <path d="M-3,5 A4,4 0 0,1 3,5"/>
+      <circle cx="0" cy="9" r="1.5" fill="white" stroke="none"/>
+    </g>
+    <text y="36" text-anchor="middle" font-size="11" fill="#1e293b" font-weight="600" stroke="white" stroke-width="3" paint-order="stroke">AP 2</text>
+  </g>
+  <g transform="translate(680,540)">
+    <circle r="20" fill="#f59e0b"/>
+    <g fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
+      <path d="M-9,-5 A12,12 0 0,1 9,-5"/>
+      <path d="M-6,0 A8,8 0 0,1 6,0"/>
+      <path d="M-3,5 A4,4 0 0,1 3,5"/>
+      <circle cx="0" cy="9" r="1.5" fill="white" stroke="none"/>
+    </g>
+    <text y="36" text-anchor="middle" font-size="11" fill="#1e293b" font-weight="600" stroke="white" stroke-width="3" paint-order="stroke">AP 3</text>
+  </g>
+</svg>
