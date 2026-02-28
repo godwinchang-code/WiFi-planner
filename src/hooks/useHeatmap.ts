@@ -31,7 +31,7 @@ export function useHeatmap(
   } = options;
 
   const { engine } = useWasmEngine();
-  const workerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statsRef = useRef<CoverageStats | null>(null);
 
   const redraw = useCallback(() => {
@@ -87,10 +87,10 @@ export function useHeatmap(
   ]);
 
   useEffect(() => {
-    if (workerRef.current) clearTimeout(workerRef.current);
-    workerRef.current = setTimeout(redraw, 100);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(redraw, 100);
     return () => {
-      if (workerRef.current) clearTimeout(workerRef.current);
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
   }, [redraw]);
 

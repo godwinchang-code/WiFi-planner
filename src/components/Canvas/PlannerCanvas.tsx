@@ -135,7 +135,7 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const delta = e.deltaY > 0 ? 0.85 : 1.15;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
     const newZoom = Math.max(0.2, Math.min(5, canvasZoom * delta));
 
     const newOffset = {

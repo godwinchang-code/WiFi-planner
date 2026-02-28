@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { AccessPoint } from '../../types';
 
 type Props = {
@@ -11,6 +11,30 @@ type Props = {
 
 export function AccessPointMarker({ ap, isSelected, onSelect, onDragEnd, zoom }: Props) {
   const [isDragging, setIsDragging] = useState(false);
+
+  // Keep a stable reference to the live handlers so the unmount cleanup
+  // can always remove the most-recently-attached listeners, even if the
+  // component unmounts mid-drag.
+  const activeHandlers = useRef<{
+    mousemove: ((e: MouseEvent) => void) | null;
+    mouseup: ((e: MouseEvent) => void) | null;
+  }>({ mousemove: null, mouseup: null });
+
+  // Remove any dangling window listeners when the component unmounts.
+  // We intentionally read .current at unmount time to get the most-recently-
+  // registered handlers. The eslint-disable below suppresses the false-positive
+  // "ref value will have changed" warning – that change is exactly what we need.
+  useEffect(() => {
+    const handlers = activeHandlers; // capture the stable ref object (not .current)
+    return () => {
+      if (handlers.current.mousemove) {
+        window.removeEventListener('mousemove', handlers.current.mousemove);
+      }
+      if (handlers.current.mouseup) {
+        window.removeEventListener('mouseup', handlers.current.mouseup);
+      }
+    };
+  }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -39,8 +63,13 @@ export function AccessPointMarker({ ap, isSelected, onSelect, onDragEnd, zoom }:
       setIsDragging(false);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      activeHandlers.current.mousemove = null;
+      activeHandlers.current.mouseup = null;
     };
 
+    // Register handlers and track them for unmount cleanup
+    activeHandlers.current.mousemove = handleMouseMove;
+    activeHandlers.current.mouseup = handleMouseUp;
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
   };

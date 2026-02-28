@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { usePlannerStore } from '../store/plannerStore';
 
-// Reset store before each test
+// Reset store before each test – includes history so tests are fully isolated
 beforeEach(() => {
   usePlannerStore.setState({
     accessPoints: [],
@@ -9,6 +9,8 @@ beforeEach(() => {
     selectedAPId: null,
     selectedWallId: null,
     activeTool: 'select',
+    _history: [{ accessPoints: [], walls: [] }],
+    _historyIndex: 0,
   });
 });
 
@@ -120,6 +122,86 @@ describe('plannerStore - tools', () => {
   });
 });
 
+describe('plannerStore - undo/redo', () => {
+  it('canUndo() is false at the initial baseline', () => {
+    expect(usePlannerStore.getState().canUndo()).toBe(false);
+  });
+
+  it('canRedo() is false when nothing has been undone', () => {
+    usePlannerStore.getState().addAccessPoint(100, 100);
+    expect(usePlannerStore.getState().canRedo()).toBe(false);
+  });
+
+  it('undoes addAccessPoint', () => {
+    usePlannerStore.getState().addAccessPoint(100, 100);
+    expect(usePlannerStore.getState().accessPoints).toHaveLength(1);
+    expect(usePlannerStore.getState().canUndo()).toBe(true);
+
+    usePlannerStore.getState().undo();
+    expect(usePlannerStore.getState().accessPoints).toHaveLength(0);
+    expect(usePlannerStore.getState().canUndo()).toBe(false);
+  });
+
+  it('redoes after undo', () => {
+    usePlannerStore.getState().addAccessPoint(100, 100);
+    usePlannerStore.getState().undo();
+    expect(usePlannerStore.getState().accessPoints).toHaveLength(0);
+    expect(usePlannerStore.getState().canRedo()).toBe(true);
+
+    usePlannerStore.getState().redo();
+    expect(usePlannerStore.getState().accessPoints).toHaveLength(1);
+  });
+
+  it('redo is cleared when a new action is taken after undo', () => {
+    usePlannerStore.getState().addAccessPoint(100, 100); // step 1
+    usePlannerStore.getState().addAccessPoint(200, 200); // step 2
+    usePlannerStore.getState().undo();                   // back to step 1
+    expect(usePlannerStore.getState().canRedo()).toBe(true);
+
+    usePlannerStore.getState().addWall(0, 0, 50, 50);   // branch – discards redo tail
+    expect(usePlannerStore.getState().canRedo()).toBe(false);
+    // Should have 1 AP (from step 1) and 1 wall (new branch)
+    expect(usePlannerStore.getState().accessPoints).toHaveLength(1);
+    expect(usePlannerStore.getState().walls).toHaveLength(1);
+  });
+
+  it('undoes addWall', () => {
+    usePlannerStore.getState().addWall(0, 0, 100, 100);
+    expect(usePlannerStore.getState().walls).toHaveLength(1);
+    usePlannerStore.getState().undo();
+    expect(usePlannerStore.getState().walls).toHaveLength(0);
+  });
+
+  it('undoes removeAccessPoint', () => {
+    usePlannerStore.getState().addAccessPoint(50, 50);
+    const id = usePlannerStore.getState().accessPoints[0].id;
+    usePlannerStore.getState().removeAccessPoint(id);
+    expect(usePlannerStore.getState().accessPoints).toHaveLength(0);
+    usePlannerStore.getState().undo();
+    expect(usePlannerStore.getState().accessPoints).toHaveLength(1);
+  });
+
+  it('multiple undo/redo cycles are stable', () => {
+    usePlannerStore.getState().addAccessPoint(100, 100); // 1 AP
+    usePlannerStore.getState().addAccessPoint(200, 200); // 2 APs
+    usePlannerStore.getState().addWall(0, 0, 50, 50);   // 2 APs + 1 wall
+
+    usePlannerStore.getState().undo(); // back to 2 APs
+    expect(usePlannerStore.getState().accessPoints).toHaveLength(2);
+    expect(usePlannerStore.getState().walls).toHaveLength(0);
+
+    usePlannerStore.getState().undo(); // back to 1 AP
+    expect(usePlannerStore.getState().accessPoints).toHaveLength(1);
+
+    usePlannerStore.getState().redo(); // forward to 2 APs
+    expect(usePlannerStore.getState().accessPoints).toHaveLength(2);
+
+    usePlannerStore.getState().redo(); // forward to 2 APs + 1 wall
+    expect(usePlannerStore.getState().accessPoints).toHaveLength(2);
+    expect(usePlannerStore.getState().walls).toHaveLength(1);
+  });
+});
+
 describe('plannerStore - export/import', () => {
   it('exports plan as JSON', () => {
     usePlannerStore.getState().addAccessPoint(100, 100);
@@ -143,6 +225,14 @@ describe('plannerStore - export/import', () => {
     expect(accessPoints).toHaveLength(1);
     expect(accessPoints[0].name).toBe('AP 1');
     expect(accessPoints[0].band).toBe('5GHz');
+  });
+
+  it('import resets undo history', () => {
+    usePlannerStore.getState().addAccessPoint(100, 100);
+    const json = JSON.stringify({ version: '1.1', accessPoints: [], walls: [], pixelsPerMeter: 20 });
+    usePlannerStore.getState().importPlan(json);
+    // After import the history should be reset – nothing to undo
+    expect(usePlannerStore.getState().canUndo()).toBe(false);
   });
 
   it('clears all data', () => {

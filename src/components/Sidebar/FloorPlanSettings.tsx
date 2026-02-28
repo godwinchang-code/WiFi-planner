@@ -1,22 +1,33 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { Upload, X, ImageIcon } from 'lucide-react';
 import { usePlannerStore } from '../../store/plannerStore';
 
 export function FloorPlanSettings() {
   const { floorPlan, setFloorPlan, clearFloorPlanImage } = usePlannerStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(true);
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  /**
+   * Read an image File, determine its display dimensions (capped at 2000 px
+   * on the longest side), and update the floor-plan store entry.
+   * Guards against calling setState after the component has unmounted and
+   * surfaces a user-visible message on load failure.
+   */
+  const loadImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) return;
 
     const reader = new FileReader();
     reader.onload = (event) => {
       const imageData = event.target?.result as string;
-
-      // Get image dimensions
       const img = new Image();
+
       img.onload = () => {
+        if (!mountedRef.current) return;
         const maxSize = 2000;
         let { width, height } = img;
         if (width > maxSize || height > maxSize) {
@@ -26,37 +37,35 @@ export function FloorPlanSettings() {
         }
         setFloorPlan({ imageData, width, height });
       };
+
+      img.onerror = () => {
+        if (!mountedRef.current) return;
+        alert('Failed to load image. The file may be corrupt or unsupported.');
+      };
+
       img.src = imageData;
     };
-    reader.readAsDataURL(file);
 
-    // Reset input
-    e.target.value = '';
+    reader.onerror = () => {
+      if (!mountedRef.current) return;
+      alert('Failed to read file. Please try again.');
+    };
+
+    reader.readAsDataURL(file);
   }, [setFloorPlan]);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) loadImageFile(file);
+    // Always reset so the same file can be re-selected
+    e.target.value = '';
+  }, [loadImageFile]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (!file?.type.startsWith('image/')) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const imageData = event.target?.result as string;
-      const img = new Image();
-      img.onload = () => {
-        const maxSize = 2000;
-        let { width, height } = img;
-        if (width > maxSize || height > maxSize) {
-          const scale = maxSize / Math.max(width, height);
-          width = Math.round(width * scale);
-          height = Math.round(height * scale);
-        }
-        setFloorPlan({ imageData, width, height });
-      };
-      img.src = imageData;
-    };
-    reader.readAsDataURL(file);
-  }, [setFloorPlan]);
+    if (file) loadImageFile(file);
+  }, [loadImageFile]);
 
   return (
     <div className="p-3 border-b border-gray-200 space-y-3">

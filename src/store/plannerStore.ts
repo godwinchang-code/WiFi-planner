@@ -21,6 +21,11 @@ const DEFAULT_FLOOR_PLAN: FloorPlan = {
   scale: 0.1, // 1 pixel = 0.1 meters (10 px/m)
 };
 
+/**
+ * Maximum number of undo steps kept in memory.
+ * The timeline array can hold up to MAX_HISTORY + 1 entries (slot 0 = oldest
+ * surviving baseline, slot MAX_HISTORY = current state).
+ */
 const MAX_HISTORY = 50;
 
 /** Supported plan file versions for import. */
@@ -48,7 +53,18 @@ type PlannerStore = {
   canvasZoom: number;
   pixelsPerMeter: number;
 
-  /** Undo stack – not persisted to localStorage. */
+  /**
+   * Timeline-based undo history (not persisted to localStorage).
+   *
+   * _history[i] = canvas state AFTER the i-th action.
+   * _history[0] = initial empty state (or baseline after import/clear).
+   * _historyIndex = pointer to the current position in the timeline.
+   *
+   * undo() → _historyIndex--, restore _history[_historyIndex]
+   * redo() → _historyIndex++, restore _history[_historyIndex]
+   * canUndo() → _historyIndex > 0
+   * canRedo() → _historyIndex < _history.length - 1
+   */
   _history: HistorySnapshot[];
   _historyIndex: number;
 
@@ -107,19 +123,26 @@ function getNextAPColor(existingAPs: AccessPoint[]): string {
 }
 
 /**
- * Push a snapshot onto the undo history, truncating any redo tail and
- * capping the stack at MAX_HISTORY entries.
+ * Append a new state snapshot to the timeline.
+ *
+ * @param history  Current history array
+ * @param index    Current historyIndex (position of the currently shown state)
+ * @param newState The state AFTER the action has been applied
  */
 function pushHistory(
   history: HistorySnapshot[],
   index: number,
-  snapshot: HistorySnapshot,
+  newState: HistorySnapshot,
 ): { _history: HistorySnapshot[]; _historyIndex: number } {
-  const trimmed = history.slice(0, index + 1);
-  const next = [...trimmed, snapshot];
-  if (next.length > MAX_HISTORY) next.shift();
+  // Discard any redo tail above the current position
+  const base = history.slice(0, index + 1);
+  const next = [...base, newState];
+  // Trim oldest entries if we exceed the cap
+  if (next.length > MAX_HISTORY + 1) next.shift();
   return { _history: next, _historyIndex: next.length - 1 };
 }
+
+const INITIAL_HISTORY: HistorySnapshot[] = [{ accessPoints: [], walls: [] }];
 
 export const usePlannerStore = create<PlannerStore>()(
   persist(
@@ -137,8 +160,9 @@ export const usePlannerStore = create<PlannerStore>()(
       canvasOffset: { x: 0, y: 0 },
       canvasZoom: 1,
       pixelsPerMeter: 20,
-      _history: [],
-      _historyIndex: -1,
+      // Timeline starts with the empty canvas as the baseline (index 0)
+      _history: INITIAL_HISTORY,
+      _historyIndex: 0,
 
       addAccessPoint: (x, y) => {
         const state = get();
@@ -156,13 +180,14 @@ export const usePlannerStore = create<PlannerStore>()(
           enabled: true,
           color: getNextAPColor(state.accessPoints),
         };
+        const newAccessPoints = [...state.accessPoints, newAP];
         const histEntry = pushHistory(state._history, state._historyIndex, {
-          accessPoints: state.accessPoints,
+          accessPoints: newAccessPoints,
           walls: state.walls,
         });
         set({
           ...histEntry,
-          accessPoints: [...state.accessPoints, newAP],
+          accessPoints: newAccessPoints,
           selectedAPId: id,
           activeTool: 'select',
         });
@@ -178,13 +203,14 @@ export const usePlannerStore = create<PlannerStore>()(
 
       removeAccessPoint: (id) => {
         const state = get();
+        const newAccessPoints = state.accessPoints.filter(ap => ap.id !== id);
         const histEntry = pushHistory(state._history, state._historyIndex, {
-          accessPoints: state.accessPoints,
+          accessPoints: newAccessPoints,
           walls: state.walls,
         });
         set({
           ...histEntry,
-          accessPoints: state.accessPoints.filter(ap => ap.id !== id),
+          accessPoints: newAccessPoints,
           selectedAPId: state.selectedAPId === id ? null : state.selectedAPId,
         });
       },
@@ -205,13 +231,14 @@ export const usePlannerStore = create<PlannerStore>()(
         const state = get();
         const id = generateWallId();
         const newWall: Wall = { id, x1, y1, x2, y2, type: state.selectedWallType };
+        const newWalls = [...state.walls, newWall];
         const histEntry = pushHistory(state._history, state._historyIndex, {
           accessPoints: state.accessPoints,
-          walls: state.walls,
+          walls: newWalls,
         });
         set({
           ...histEntry,
-          walls: [...state.walls, newWall],
+          walls: newWalls,
         });
       },
 
@@ -225,13 +252,14 @@ export const usePlannerStore = create<PlannerStore>()(
 
       removeWall: (id) => {
         const state = get();
+        const newWalls = state.walls.filter(wall => wall.id !== id);
         const histEntry = pushHistory(state._history, state._historyIndex, {
           accessPoints: state.accessPoints,
-          walls: state.walls,
+          walls: newWalls,
         });
         set({
           ...histEntry,
-          walls: state.walls.filter(wall => wall.id !== id),
+          walls: newWalls,
           selectedWallId: state.selectedWallId === id ? null : state.selectedWallId,
         });
       },
@@ -280,10 +308,14 @@ export const usePlannerStore = create<PlannerStore>()(
         set({ pixelsPerMeter: ppm });
       },
 
+      /**
+       * Undo the last structural action (add/remove AP or wall).
+       * Steps the timeline pointer one slot back and restores that state.
+       */
       undo: () => {
         const { _history, _historyIndex } = get();
-        if (_historyIndex < 0) return;
-        const snapshot = _history[_historyIndex];
+        if (_historyIndex <= 0) return; // already at the baseline
+        const snapshot = _history[_historyIndex - 1];
         set({
           accessPoints: snapshot.accessPoints,
           walls: snapshot.walls,
@@ -293,28 +325,25 @@ export const usePlannerStore = create<PlannerStore>()(
         });
       },
 
+      /**
+       * Redo the last undone action.
+       * Steps the timeline pointer forward one slot and restores that state.
+       */
       redo: () => {
         const { _history, _historyIndex } = get();
-        const nextIndex = _historyIndex + 1;
-        // redo moves forward to a snapshot that was pushed *after* the current one;
-        // however our stack stores the state BEFORE each action, so redo restores
-        // the snapshot at nextIndex (which is the state before the next-undone action).
-        // We actually want to restore the state *after* that action, which is stored
-        // in the snapshot at nextIndex + 1, or if that doesn't exist, not available.
-        // Simpler: skip redo entirely for now – undo/redo is pair-symmetric here.
-        if (nextIndex >= _history.length) return;
-        const snapshot = _history[nextIndex];
+        if (_historyIndex >= _history.length - 1) return; // already at the tip
+        const snapshot = _history[_historyIndex + 1];
         set({
           accessPoints: snapshot.accessPoints,
           walls: snapshot.walls,
-          _historyIndex: nextIndex,
+          _historyIndex: _historyIndex + 1,
           selectedAPId: null,
           selectedWallId: null,
         });
       },
 
-      canUndo: () => get()._historyIndex >= 0,
-      canRedo: () => get()._historyIndex + 1 < get()._history.length,
+      canUndo: () => get()._historyIndex > 0,
+      canRedo: () => get()._historyIndex < get()._history.length - 1,
 
       clearAll: () => {
         set({
@@ -324,8 +353,8 @@ export const usePlannerStore = create<PlannerStore>()(
           selectedAPId: null,
           selectedWallId: null,
           activeTool: 'select',
-          _history: [],
-          _historyIndex: -1,
+          _history: [{ accessPoints: [], walls: [] }],
+          _historyIndex: 0,
         });
       },
 
@@ -360,14 +389,18 @@ export const usePlannerStore = create<PlannerStore>()(
           return;
         }
 
+        const newAPs = Array.isArray(data.accessPoints) ? (data.accessPoints as AccessPoint[]) : [];
+        const newWalls = Array.isArray(data.walls) ? (data.walls as Wall[]) : [];
+
         set({
-          accessPoints: Array.isArray(data.accessPoints) ? (data.accessPoints as AccessPoint[]) : [],
-          walls: Array.isArray(data.walls) ? (data.walls as Wall[]) : [],
+          accessPoints: newAPs,
+          walls: newWalls,
           pixelsPerMeter: typeof data.pixelsPerMeter === 'number' ? data.pixelsPerMeter : 20,
           selectedAPId: null,
           selectedWallId: null,
-          _history: [],
-          _historyIndex: -1,
+          // Reset timeline to the imported state as the new baseline
+          _history: [{ accessPoints: newAPs, walls: newWalls }],
+          _historyIndex: 0,
         });
       },
     }),
