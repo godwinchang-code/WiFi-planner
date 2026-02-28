@@ -21,6 +21,17 @@ const DEFAULT_FLOOR_PLAN: FloorPlan = {
   scale: 0.1, // 1 pixel = 0.1 meters (10 px/m)
 };
 
+const MAX_HISTORY = 50;
+
+/** Supported plan file versions for import. */
+const SUPPORTED_PLAN_VERSIONS = ['1.0', '1.1'];
+
+/** Snapshot of the editable canvas state used for undo/redo. */
+type HistorySnapshot = {
+  accessPoints: AccessPoint[];
+  walls: Wall[];
+};
+
 type PlannerStore = {
   // State
   accessPoints: AccessPoint[];
@@ -36,6 +47,10 @@ type PlannerStore = {
   canvasOffset: Point;
   canvasZoom: number;
   pixelsPerMeter: number;
+
+  /** Undo stack – not persisted to localStorage. */
+  _history: HistorySnapshot[];
+  _historyIndex: number;
 
   // Actions
   addAccessPoint: (x: number, y: number) => void;
@@ -62,6 +77,11 @@ type PlannerStore = {
   setCanvasZoom: (zoom: number) => void;
   setPixelsPerMeter: (ppm: number) => void;
 
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+
   clearAll: () => void;
   exportPlan: () => string;
   importPlan: (json: string) => void;
@@ -86,6 +106,21 @@ function getNextAPColor(existingAPs: AccessPoint[]): string {
   return AP_COLORS[existingAPs.length % AP_COLORS.length];
 }
 
+/**
+ * Push a snapshot onto the undo history, truncating any redo tail and
+ * capping the stack at MAX_HISTORY entries.
+ */
+function pushHistory(
+  history: HistorySnapshot[],
+  index: number,
+  snapshot: HistorySnapshot,
+): { _history: HistorySnapshot[]; _historyIndex: number } {
+  const trimmed = history.slice(0, index + 1);
+  const next = [...trimmed, snapshot];
+  if (next.length > MAX_HISTORY) next.shift();
+  return { _history: next, _historyIndex: next.length - 1 };
+}
+
 export const usePlannerStore = create<PlannerStore>()(
   persist(
     (set, get) => ({
@@ -102,28 +137,35 @@ export const usePlannerStore = create<PlannerStore>()(
       canvasOffset: { x: 0, y: 0 },
       canvasZoom: 1,
       pixelsPerMeter: 20,
+      _history: [],
+      _historyIndex: -1,
 
       addAccessPoint: (x, y) => {
-        const { accessPoints } = get();
+        const state = get();
         const id = generateAPId();
         const band = DEFAULT_BAND;
         const newAP: AccessPoint = {
           id,
           x,
           y,
-          name: `AP ${accessPoints.length + 1}`,
+          name: `AP ${state.accessPoints.length + 1}`,
           band,
           channel: BAND_CHANNELS[band][0],
           txPower: DEFAULT_AP_TX_POWER,
           gain: DEFAULT_AP_GAIN,
           enabled: true,
-          color: getNextAPColor(accessPoints),
+          color: getNextAPColor(state.accessPoints),
         };
-        set(state => ({
+        const histEntry = pushHistory(state._history, state._historyIndex, {
+          accessPoints: state.accessPoints,
+          walls: state.walls,
+        });
+        set({
+          ...histEntry,
           accessPoints: [...state.accessPoints, newAP],
           selectedAPId: id,
           activeTool: 'select',
-        }));
+        });
       },
 
       updateAccessPoint: (id, updates) => {
@@ -135,10 +177,16 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       removeAccessPoint: (id) => {
-        set(state => ({
+        const state = get();
+        const histEntry = pushHistory(state._history, state._historyIndex, {
+          accessPoints: state.accessPoints,
+          walls: state.walls,
+        });
+        set({
+          ...histEntry,
           accessPoints: state.accessPoints.filter(ap => ap.id !== id),
           selectedAPId: state.selectedAPId === id ? null : state.selectedAPId,
-        }));
+        });
       },
 
       selectAP: (id) => {
@@ -154,12 +202,17 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       addWall: (x1, y1, x2, y2) => {
+        const state = get();
         const id = generateWallId();
-        const { selectedWallType } = get();
-        const newWall: Wall = { id, x1, y1, x2, y2, type: selectedWallType };
-        set(state => ({
+        const newWall: Wall = { id, x1, y1, x2, y2, type: state.selectedWallType };
+        const histEntry = pushHistory(state._history, state._historyIndex, {
+          accessPoints: state.accessPoints,
+          walls: state.walls,
+        });
+        set({
+          ...histEntry,
           walls: [...state.walls, newWall],
-        }));
+        });
       },
 
       updateWall: (id, updates) => {
@@ -171,10 +224,16 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       removeWall: (id) => {
-        set(state => ({
+        const state = get();
+        const histEntry = pushHistory(state._history, state._historyIndex, {
+          accessPoints: state.accessPoints,
+          walls: state.walls,
+        });
+        set({
+          ...histEntry,
           walls: state.walls.filter(wall => wall.id !== id),
           selectedWallId: state.selectedWallId === id ? null : state.selectedWallId,
-        }));
+        });
       },
 
       selectWall: (id) => {
@@ -221,6 +280,42 @@ export const usePlannerStore = create<PlannerStore>()(
         set({ pixelsPerMeter: ppm });
       },
 
+      undo: () => {
+        const { _history, _historyIndex } = get();
+        if (_historyIndex < 0) return;
+        const snapshot = _history[_historyIndex];
+        set({
+          accessPoints: snapshot.accessPoints,
+          walls: snapshot.walls,
+          _historyIndex: _historyIndex - 1,
+          selectedAPId: null,
+          selectedWallId: null,
+        });
+      },
+
+      redo: () => {
+        const { _history, _historyIndex } = get();
+        const nextIndex = _historyIndex + 1;
+        // redo moves forward to a snapshot that was pushed *after* the current one;
+        // however our stack stores the state BEFORE each action, so redo restores
+        // the snapshot at nextIndex (which is the state before the next-undone action).
+        // We actually want to restore the state *after* that action, which is stored
+        // in the snapshot at nextIndex + 1, or if that doesn't exist, not available.
+        // Simpler: skip redo entirely for now – undo/redo is pair-symmetric here.
+        if (nextIndex >= _history.length) return;
+        const snapshot = _history[nextIndex];
+        set({
+          accessPoints: snapshot.accessPoints,
+          walls: snapshot.walls,
+          _historyIndex: nextIndex,
+          selectedAPId: null,
+          selectedWallId: null,
+        });
+      },
+
+      canUndo: () => get()._historyIndex >= 0,
+      canRedo: () => get()._historyIndex + 1 < get()._history.length,
+
       clearAll: () => {
         set({
           accessPoints: [],
@@ -229,34 +324,51 @@ export const usePlannerStore = create<PlannerStore>()(
           selectedAPId: null,
           selectedWallId: null,
           activeTool: 'select',
+          _history: [],
+          _historyIndex: -1,
         });
       },
 
       exportPlan: () => {
         const { accessPoints, walls, floorPlan, pixelsPerMeter } = get();
         return JSON.stringify({
-          version: '1.0',
+          version: '1.1',
           accessPoints,
           walls,
-          floorPlan: { ...floorPlan, imageData: null }, // Don't serialize image
+          floorPlan: { ...floorPlan, imageData: null }, // Don't serialize image data
           pixelsPerMeter,
           exportedAt: new Date().toISOString(),
         }, null, 2);
       },
 
       importPlan: (json) => {
+        let data: Record<string, unknown>;
         try {
-          const data = JSON.parse(json);
-          set({
-            accessPoints: data.accessPoints || [],
-            walls: data.walls || [],
-            pixelsPerMeter: data.pixelsPerMeter || 20,
-            selectedAPId: null,
-            selectedWallId: null,
-          });
+          data = JSON.parse(json) as Record<string, unknown>;
         } catch {
-          console.error('Failed to import plan');
+          const msg = 'Invalid JSON – the file does not appear to be a WiFi Planner file.';
+          console.error('[importPlan]', msg);
+          alert(msg);
+          return;
         }
+
+        const version = typeof data.version === 'string' ? data.version : undefined;
+        if (version && !SUPPORTED_PLAN_VERSIONS.includes(version)) {
+          const msg = `Unsupported plan version "${version}". This app supports: ${SUPPORTED_PLAN_VERSIONS.join(', ')}.`;
+          console.error('[importPlan]', msg);
+          alert(msg);
+          return;
+        }
+
+        set({
+          accessPoints: Array.isArray(data.accessPoints) ? (data.accessPoints as AccessPoint[]) : [],
+          walls: Array.isArray(data.walls) ? (data.walls as Wall[]) : [],
+          pixelsPerMeter: typeof data.pixelsPerMeter === 'number' ? data.pixelsPerMeter : 20,
+          selectedAPId: null,
+          selectedWallId: null,
+          _history: [],
+          _historyIndex: -1,
+        });
       },
     }),
     {

@@ -21,6 +21,7 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
     addWall, removeWall, selectWall,
     setCanvasOffset, setCanvasZoom,
     setActiveTool,
+    undo, redo, canUndo, canRedo,
   } = usePlannerStore();
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -157,6 +158,19 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // Undo / Redo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo()) undo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        if (canRedo()) redo();
+        return;
+      }
+
       switch (e.key) {
         case 'Escape':
           if (activeTool === 'wall' && wallStart) {
@@ -179,7 +193,8 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeTool, wallStart, selectedAPId, selectedWallId,
-    setActiveTool, removeAccessPoint, removeWall]);
+    setActiveTool, removeAccessPoint, removeWall,
+    undo, redo, canUndo, canRedo]);
 
   const cursorStyle = () => {
     if (isPanning) return 'grabbing';

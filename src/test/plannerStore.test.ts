@@ -128,7 +128,7 @@ describe('plannerStore - export/import', () => {
     const parsed = JSON.parse(json);
     expect(parsed.accessPoints).toHaveLength(1);
     expect(parsed.walls).toHaveLength(1);
-    expect(parsed.version).toBe('1.0');
+    expect(parsed.version).toBe('1.1');
   });
 
   it('imports plan from JSON', () => {

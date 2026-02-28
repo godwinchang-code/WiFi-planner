@@ -4,15 +4,18 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build:wasm": "wasm-pack build wasm-engine --target bundler --out-dir ../src/wasm/pkg --out-name wifi_planner_wasm",
+    "build:wasm": "bash scripts/build-wasm-if-changed.sh",
+    "build:wasm:force": "FORCE_WASM=1 bash scripts/build-wasm-if-changed.sh",
     "test:rust": "cd wasm-engine && cargo test",
     "dev": "npm run build:wasm && vite",
+    "dev:fast": "vite",
     "build": "npm run build:wasm && tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:all": "npm run test:rust && npm run test"
+    "test:all": "npm run test:rust && npm run test",
+    "audit:check": "npm audit --audit-level=high"
   },
   "dependencies": {
     "lucide-react": "^0.344.0",
