@@ -22,6 +22,7 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
     setCanvasOffset, setCanvasZoom,
     setActiveTool,
     undo, redo, canUndo, canRedo,
+    pendingWalls, suggestedAPs,
   } = usePlannerStore();
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -347,6 +348,55 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
                 style={{ pointerEvents: 'none' }}
               />
             )}
+
+          {/* ── Pending walls (detected, awaiting confirmation) ──────────── */}
+          {pendingWalls && pendingWalls.map(wall => (
+            <line
+              key={wall.id}
+              x1={wall.x1} y1={wall.y1}
+              x2={wall.x2} y2={wall.y2}
+              stroke="#f59e0b"
+              strokeWidth={3 / canvasZoom}
+              strokeDasharray={`${10 / canvasZoom} ${5 / canvasZoom}`}
+              strokeLinecap="round"
+              opacity={0.85}
+              style={{ pointerEvents: 'none' }}
+            />
+          ))}
+
+          {/* ── Suggested AP positions (auto-deployment, ghosted) ──────────── */}
+          {suggestedAPs && suggestedAPs.map((pos, i) => (
+            <g key={i} style={{ pointerEvents: 'none' }} opacity={0.75}>
+              <circle
+                cx={pos.x} cy={pos.y}
+                r={20}
+                fill="#3b82f6"
+                fillOpacity={0.15}
+                stroke="#3b82f6"
+                strokeWidth={2 / canvasZoom}
+                strokeDasharray={`${6 / canvasZoom} ${3 / canvasZoom}`}
+              />
+              <circle
+                cx={pos.x} cy={pos.y}
+                r={5}
+                fill="#3b82f6"
+                fillOpacity={0.6}
+              />
+              <text
+                x={pos.x} y={pos.y + 32}
+                textAnchor="middle"
+                fontSize={10 / canvasZoom}
+                fill="#1d4ed8"
+                stroke="white"
+                strokeWidth={2.5 / canvasZoom}
+                paintOrder="stroke"
+                fontWeight="600"
+                fontFamily="system-ui, sans-serif"
+              >
+                建议
+              </text>
+            </g>
+          ))}
         </g>
       </svg>
 

@@ -5,6 +5,8 @@ import { HeatmapSettings } from './HeatmapSettings';
 import { FloorPlanSettings } from './FloorPlanSettings';
 import { ExportPanel } from './ExportPanel';
 import { WasmBadge } from './WasmBadge';
+import { ScenarioPanel } from './ScenarioPanel';
+import { AutoDeployPanel } from './AutoDeployPanel';
 import type { CoverageStats } from '../../utils/signalSimulation';
 
 type Props = {
@@ -22,16 +24,17 @@ export function Sidebar({ stats }: Props) {
             <h1 className="text-white font-bold text-base leading-tight">WiFi Planner</h1>
             <p className="text-primary-200 text-xs">Network Coverage Planning</p>
           </div>
-          {/* WASM engine status badge */}
           <WasmBadge />
         </div>
       </div>
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
+        <ScenarioPanel />
         <FloorPlanSettings />
         <Toolbar />
         <APPanel />
+        <AutoDeployPanel />
         <HeatmapSettings stats={stats} />
         <ExportPanel />
       </div>

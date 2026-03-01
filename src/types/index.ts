@@ -104,3 +104,34 @@ export type PlannerState = {
   canvasOffset: Point;
   canvasZoom: number;
 };
+
+// ─── Scenario Templates ───────────────────────────────────────────────────────
+
+export type ScenarioTemplate = {
+  id: string;
+  name: string;        // bilingual e.g. "家庭公寓 / Apartment"
+  category: 'residential' | 'smb';
+  description: string;
+  floorPlan: { width: number; height: number };
+  pixelsPerMeter: number;
+  walls: Omit<Wall, 'id'>[];
+  accessPoints: Omit<AccessPoint, 'id'>[];
+};
+
+// ─── Auto-Deployment ─────────────────────────────────────────────────────────
+
+export type DeploymentOptions = {
+  band: Band;
+  txPower: number;           // dBm
+  gain: number;              // dBi
+  targetRSSI: number;        // dBm threshold for "covered"
+  minSeparationM: number;    // minimum AP-to-AP distance in metres
+  targetCoveragePct: number; // 0–1
+  maxAPs: number;
+};
+
+export type DeploymentResult = {
+  positions: Array<{ x: number; y: number }>;
+  achievedCoveragePct: number;
+  uncoveredPct: number;
+};
