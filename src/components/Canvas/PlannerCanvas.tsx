@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
 import { HeatmapLayer } from './HeatmapLayer';
 import { AccessPointMarker } from './AccessPointMarker';
@@ -6,6 +6,7 @@ import { WallLayer } from './WallLayer';
 import { GridLayer } from './GridLayer';
 import { screenToCanvas } from '../../utils/geometry';
 import { calculateRSSI, getSignalQuality, getSignalQualityColor } from '../../utils/signalSimulation';
+import { useI18n } from '../../i18n/I18nContext';
 import type { CoverageStats } from '../../utils/signalSimulation';
 
 type Props = {
@@ -13,10 +14,11 @@ type Props = {
 };
 
 export function PlannerCanvas({ onStatsUpdate }: Props) {
+  const { t } = useI18n();
   const {
     accessPoints, walls, floorPlan,
     activeTool, selectedAPId, selectedWallId,
-    showHeatmap, heatmapBand, heatmapResolution,
+    showHeatmap, heatmapBand, heatmapResolution, heatmapOpacity,
     canvasOffset, canvasZoom, pixelsPerMeter,
     addAccessPoint, updateAccessPoint, removeAccessPoint, selectAP,
     addWall, removeWall, selectWall,
@@ -275,6 +277,15 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
     }
   };
 
+  const transformedLayerStyle: CSSProperties = {
+    position: 'absolute',
+    transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasZoom})`,
+    transformOrigin: '0 0',
+    width,
+    height,
+    pointerEvents: 'none',
+  };
+
   return (
     <div
       ref={containerRef}
@@ -284,17 +295,35 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
       onMouseUp={handleMouseUp}
       onMouseLeave={() => { setMousePos(null); stationDragging.current = false; }}
     >
-      {/* Heatmap canvas - behind SVG */}
-      <div
-        style={{
-          position: 'absolute',
-          transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasZoom})`,
-          transformOrigin: '0 0',
-          width,
-          height,
-          pointerEvents: 'none',
-        }}
-      >
+      {/* Floor-plan background layer */}
+      <div style={transformedLayerStyle}>
+        <svg width={width} height={height}>
+          <rect
+            x={0}
+            y={0}
+            width={width}
+            height={height}
+            fill="white"
+            stroke="#e2e8f0"
+            strokeWidth={2 / canvasZoom}
+            rx={2 / canvasZoom}
+          />
+          {floorPlan.imageData && (
+            <image
+              href={floorPlan.imageData}
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              preserveAspectRatio="xMidYMid meet"
+              opacity={0.7}
+            />
+          )}
+        </svg>
+      </div>
+
+      {/* Heatmap layer - above floor plan, below interactive overlays */}
+      <div style={transformedLayerStyle}>
         {showHeatmap && (
           <HeatmapLayer
             width={width}
@@ -304,13 +333,14 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
             walls={walls}
             pixelsPerMeter={pixelsPerMeter}
             band={heatmapBand}
+            opacity={heatmapOpacity}
             enabled={showHeatmap}
             onStatsUpdate={onStatsUpdate}
           />
         )}
       </div>
 
-      {/* SVG overlay */}
+      {/* Foreground interactive overlay */}
       <svg
         ref={svgRef}
         style={{
@@ -323,26 +353,15 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
         }}
       >
         <g transform={`translate(${canvasOffset.x}, ${canvasOffset.y}) scale(${canvasZoom})`}>
-          {/* Floor plan background */}
+          {/* Floor plan border */}
           <rect
             x={0} y={0}
             width={width} height={height}
-            fill="white"
+            fill="none"
             stroke="#e2e8f0"
             strokeWidth={2 / canvasZoom}
             rx={2 / canvasZoom}
           />
-
-          {/* Floor plan image */}
-          {floorPlan.imageData && (
-            <image
-              href={floorPlan.imageData}
-              x={0} y={0}
-              width={width} height={height}
-              preserveAspectRatio="xMidYMid meet"
-              opacity={0.6}
-            />
-          )}
 
           {/* Grid */}
           <GridLayer
@@ -669,7 +688,7 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
           fontSize: 13,
           pointerEvents: 'none',
         }}>
-          Click to set wall start point
+          {t('hintSetWallStart')}
         </div>
       )}
       {activeTool === 'wall' && wallStart && (
@@ -685,7 +704,7 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
           fontSize: 13,
           pointerEvents: 'none',
         }}>
-          Click to set wall end point · ESC to cancel
+          {t('hintSetWallEnd')}
         </div>
       )}
       {activeTool === 'ap' && (
@@ -701,7 +720,7 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
           fontSize: 13,
           pointerEvents: 'none',
         }}>
-          Click on the floor plan to place an access point
+          {t('hintPlaceAp')}
         </div>
       )}
       {activeTool === 'measure' && !measureStart && (

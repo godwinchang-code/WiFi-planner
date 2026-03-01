@@ -14,6 +14,7 @@ import type {
 } from '../types';
 import { AP_COLORS, BAND_CHANNELS } from '../types';
 import type { WallSegment } from '../utils/wallDetection';
+import { messages, type Locale, type MessageKey } from '../i18n/messages';
 
 const DEFAULT_AP_TX_POWER = 20;
 const DEFAULT_AP_GAIN = 2;
@@ -38,6 +39,21 @@ const INITIAL_FLOOR: Floor = {
 const MAX_HISTORY = 50;
 const SUPPORTED_PLAN_VERSIONS = ['1.0', '1.1', '1.2'];
 
+function getLocaleForStoreMessages(): Locale {
+  const saved = localStorage.getItem('wifi-planner-locale') as Locale | null;
+  if (saved && (saved === 'en' || saved === 'zh-CN')) return saved;
+  return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
+}
+
+function tStore(key: MessageKey, params?: Record<string, string | number>): string {
+  const locale = getLocaleForStoreMessages();
+  const template = messages[locale][key];
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (_, paramKey: string) => {
+    const value = params[paramKey];
+    return value === undefined ? `{${paramKey}}` : String(value);
+  });
+}
 type HistorySnapshot = {
   accessPoints: AccessPoint[];
   walls: Wall[];
@@ -57,6 +73,7 @@ type PlannerStore = {
   showHeatmap: boolean;
   heatmapBand: Band;
   heatmapResolution: number;
+  heatmapOpacity: number;
   canvasOffset: Point;
   canvasZoom: number;
   pixelsPerMeter: number;
@@ -95,6 +112,7 @@ type PlannerStore = {
   setShowHeatmap: (show: boolean) => void;
   setHeatmapBand: (band: Band) => void;
   setHeatmapResolution: (resolution: number) => void;
+  setHeatmapOpacity: (opacity: number) => void;
 
   setCanvasOffset: (offset: Point) => void;
   setCanvasZoom: (zoom: number) => void;
@@ -194,6 +212,7 @@ export const usePlannerStore = create<PlannerStore>()(
       showHeatmap: true,
       heatmapBand: '2.4GHz',
       heatmapResolution: 8,
+      heatmapOpacity: 0.7,
       canvasOffset: { x: 0, y: 0 },
       canvasZoom: 1,
       pixelsPerMeter: 20,
@@ -405,12 +424,15 @@ export const usePlannerStore = create<PlannerStore>()(
       setShowHeatmap: (show) => set({ showHeatmap: show }),
       setHeatmapBand: (band) => set({ heatmapBand: band }),
       setHeatmapResolution: (resolution) => set({ heatmapResolution: resolution }),
+      setHeatmapOpacity: (opacity) => {
+        const clamped = Math.max(0, Math.min(1, opacity));
+        set({ heatmapOpacity: clamped });
+      },
       setCanvasOffset: (offset) => set({ canvasOffset: offset }),
       setCanvasZoom: (zoom) => set({ canvasZoom: zoom }),
       setPixelsPerMeter: (ppm) => set({ pixelsPerMeter: ppm }),
 
       // ── Undo / Redo ─────────────────────────────────────────────────────────
-
       undo: () => {
         const { _history, _historyIndex } = get();
         if (_historyIndex <= 0) return;
@@ -475,7 +497,7 @@ export const usePlannerStore = create<PlannerStore>()(
         try {
           data = JSON.parse(json) as Record<string, unknown>;
         } catch {
-          const msg = 'Invalid JSON – the file does not appear to be a WiFi Planner file.';
+          const msg = tStore('invalidPlanJson');
           console.error('[importPlan]', msg);
           alert(msg);
           return;
@@ -483,7 +505,10 @@ export const usePlannerStore = create<PlannerStore>()(
 
         const version = typeof data.version === 'string' ? data.version : undefined;
         if (version && !SUPPORTED_PLAN_VERSIONS.includes(version)) {
-          const msg = `Unsupported plan version "${version}". Supported: ${SUPPORTED_PLAN_VERSIONS.join(', ')}.`;
+          const msg = tStore('unsupportedPlanVersion', {
+            version,
+            supported: SUPPORTED_PLAN_VERSIONS.join(', '),
+          });
           console.error('[importPlan]', msg);
           alert(msg);
           return;
@@ -656,6 +681,7 @@ export const usePlannerStore = create<PlannerStore>()(
         showHeatmap: state.showHeatmap,
         heatmapBand: state.heatmapBand,
         heatmapResolution: state.heatmapResolution,
+        heatmapOpacity: state.heatmapOpacity,
       }),
     },
   ),

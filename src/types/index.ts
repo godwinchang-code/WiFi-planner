@@ -101,6 +101,7 @@ export type PlannerState = {
   showHeatmap: boolean;
   heatmapBand: Band;
   heatmapResolution: number;
+  heatmapOpacity: number;
   canvasOffset: Point;
   canvasZoom: number;
 };

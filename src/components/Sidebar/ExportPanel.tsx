@@ -1,8 +1,10 @@
 import { Download, Upload, Trash2, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
 import { useCallback, useRef } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
+import { useI18n } from '../../i18n/I18nContext';
 
 export function ExportPanel() {
+  const { t } = useI18n();
   const {
     exportPlan, importPlan, clearAll,
     canvasZoom,
@@ -61,21 +63,21 @@ export function ExportPanel() {
   }, [floorPlan, setCanvasZoom, setCanvasOffset]);
 
   const handleClearAll = useCallback(() => {
-    if (window.confirm('Clear all access points and walls? This cannot be undone.')) {
+    if (window.confirm(t('confirmClear'))) {
       clearAll();
     }
-  }, [clearAll]);
+  }, [clearAll, t]);
 
   return (
     <div className="p-3 border-t border-gray-200 space-y-3">
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">View & File</h3>
+      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('viewFile')}</h3>
 
       {/* Zoom controls */}
       <div className="flex items-center gap-1">
         <button
           onClick={() => setCanvasZoom(Math.max(0.2, canvasZoom / 1.25))}
           className="p-1.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
-          title="Zoom out"
+          title={t('zoomOut')}
         >
           <ZoomOut size={14} />
         </button>
@@ -85,14 +87,14 @@ export function ExportPanel() {
         <button
           onClick={() => setCanvasZoom(Math.min(5, canvasZoom * 1.25))}
           className="p-1.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
-          title="Zoom in"
+          title={t('zoomIn')}
         >
           <ZoomIn size={14} />
         </button>
         <button
           onClick={handleFitView}
           className="ml-1 p-1.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
-          title="Fit to view"
+          title={t('fitToView')}
         >
           <Maximize size={14} />
         </button>
@@ -100,7 +102,7 @@ export function ExportPanel() {
           onClick={handleResetView}
           className="ml-auto text-xs text-gray-500 hover:text-gray-700 underline"
         >
-          Reset
+          {t('reset')}
         </button>
       </div>
 
@@ -111,14 +113,14 @@ export function ExportPanel() {
           className="flex items-center justify-center gap-1.5 px-2 py-2 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 transition-colors"
         >
           <Download size={14} />
-          Export Plan
+          {t('exportPlan')}
         </button>
         <button
           onClick={handleImportClick}
           className="flex items-center justify-center gap-1.5 px-2 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
         >
           <Upload size={14} />
-          Import Plan
+          {t('importPlan')}
         </button>
       </div>
 
@@ -127,7 +129,7 @@ export function ExportPanel() {
         className="w-full flex items-center justify-center gap-1.5 px-2 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors border border-red-200"
       >
         <Trash2 size={14} />
-        Clear All
+        {t('clearAll')}
       </button>
 
       <input

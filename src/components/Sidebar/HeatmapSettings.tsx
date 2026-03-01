@@ -1,4 +1,5 @@
 import { usePlannerStore } from '../../store/plannerStore';
+import { useI18n } from '../../i18n/I18nContext';
 import type { Band } from '../../types';
 import type { CoverageStats } from '../../utils/signalSimulation';
 import { getSignalQualityColor } from '../../utils/signalSimulation';
@@ -10,15 +11,16 @@ type Props = {
 };
 
 export function HeatmapSettings({ stats }: Props) {
+  const { t } = useI18n();
   const {
-    showHeatmap, heatmapBand, heatmapResolution,
-    setShowHeatmap, setHeatmapBand, setHeatmapResolution,
+    showHeatmap, heatmapBand, heatmapResolution, heatmapOpacity,
+    setShowHeatmap, setHeatmapBand, setHeatmapResolution, setHeatmapOpacity,
   } = usePlannerStore();
 
   return (
     <div className="p-3 border-t border-gray-200 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Heatmap</h3>
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('heatmap')}</h3>
         <label className="flex items-center gap-1.5 cursor-pointer">
           <div
             onClick={() => setShowHeatmap(!showHeatmap)}
@@ -30,7 +32,7 @@ export function HeatmapSettings({ stats }: Props) {
               showHeatmap ? 'translate-x-4' : 'translate-x-1'
             }`} />
           </div>
-          <span className="text-xs text-gray-600">{showHeatmap ? 'On' : 'Off'}</span>
+          <span className="text-xs text-gray-600">{showHeatmap ? t('on') : t('off')}</span>
         </label>
       </div>
 
@@ -38,7 +40,7 @@ export function HeatmapSettings({ stats }: Props) {
         <>
           {/* Band selection */}
           <div className="space-y-1">
-            <label className="text-xs text-gray-500 font-medium">Band</label>
+            <label className="text-xs text-gray-500 font-medium">{t('band')}</label>
             <div className="grid grid-cols-3 gap-1">
               {BANDS.map(band => (
                 <button
@@ -59,9 +61,9 @@ export function HeatmapSettings({ stats }: Props) {
           {/* Resolution */}
           <div className="space-y-1">
             <div className="flex justify-between">
-              <label className="text-xs text-gray-500 font-medium">Resolution</label>
+              <label className="text-xs text-gray-500 font-medium">{t('resolution')}</label>
               <span className="text-xs text-gray-400">
-                {heatmapResolution === 4 ? 'High' : heatmapResolution === 8 ? 'Medium' : 'Low'}
+                {heatmapResolution === 4 ? t('resolutionHigh') : heatmapResolution === 8 ? t('resolutionMedium') : t('resolutionLow')}
               </span>
             </div>
             <input
@@ -74,21 +76,38 @@ export function HeatmapSettings({ stats }: Props) {
               className="w-full accent-primary-600"
             />
             <div className="flex justify-between text-xs text-gray-400">
-              <span>High</span>
-              <span>Low (faster)</span>
+              <span>{t('resolutionHigh')}</span>
+              <span>{t('lowFaster')}</span>
             </div>
+          </div>
+
+          {/* Opacity */}
+          <div className="space-y-1">
+            <div className="flex justify-between">
+              <label className="text-xs text-gray-500 font-medium">{t('opacity')}</label>
+              <span className="text-xs text-gray-400">{Math.round(heatmapOpacity * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              min={30}
+              max={100}
+              step={5}
+              value={Math.round(heatmapOpacity * 100)}
+              onChange={e => setHeatmapOpacity(Number(e.target.value) / 100)}
+              className="w-full accent-primary-600"
+            />
           </div>
 
           {/* Legend */}
           <div className="space-y-1">
-            <label className="text-xs text-gray-500 font-medium">Signal Legend</label>
+            <label className="text-xs text-gray-500 font-medium">{t('signalLegend')}</label>
             <div className="space-y-1">
               {[
-                { label: 'Excellent', range: '> -50 dBm', color: '#00c800' },
-                { label: 'Good', range: '-50 to -60', color: '#c8c800' },
-                { label: 'Fair', range: '-60 to -70', color: '#dc6400' },
-                { label: 'Poor', range: '-70 to -80', color: '#e60000' },
-                { label: 'No signal', range: '< -80 dBm', color: '#6b7280' },
+                { label: t('excellent'), range: '> -50 dBm', color: '#00c800' },
+                { label: t('good'), range: '-50 to -60', color: '#c8c800' },
+                { label: t('fair'), range: '-60 to -70', color: '#dc6400' },
+                { label: t('poor'), range: '-70 to -80', color: '#e60000' },
+                { label: t('noSignal'), range: '< -80 dBm', color: '#6b7280' },
               ].map(item => (
                 <div key={item.label} className="flex items-center gap-2">
                   <span
@@ -113,16 +132,17 @@ export function HeatmapSettings({ stats }: Props) {
 }
 
 function CoverageStatsPanel({ stats }: { stats: CoverageStats }) {
+  const { t } = useI18n();
   const covered = stats.excellentPercent + stats.goodPercent + stats.fairPercent;
 
   return (
     <div className="border border-gray-200 rounded-lg p-3 space-y-2">
-      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Coverage Stats</h4>
+      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('coverageStats')}</h4>
 
       {/* Coverage bar */}
       <div>
         <div className="flex justify-between text-xs mb-1">
-          <span className="text-gray-600">Total Coverage</span>
+          <span className="text-gray-600">{t('totalCoverage')}</span>
           <span className="font-semibold text-gray-800">{covered.toFixed(1)}%</span>
         </div>
         <div className="h-3 rounded-full overflow-hidden bg-gray-200 flex">
@@ -136,10 +156,10 @@ function CoverageStatsPanel({ stats }: { stats: CoverageStats }) {
       {/* Breakdown */}
       <div className="grid grid-cols-2 gap-1 text-xs">
         {[
-          { label: 'Excellent', value: stats.excellentPercent, quality: 'excellent' as const },
-          { label: 'Good', value: stats.goodPercent, quality: 'good' as const },
-          { label: 'Fair', value: stats.fairPercent, quality: 'fair' as const },
-          { label: 'Poor', value: stats.poorPercent, quality: 'poor' as const },
+          { label: t('excellent'), value: stats.excellentPercent, quality: 'excellent' as const },
+          { label: t('good'), value: stats.goodPercent, quality: 'good' as const },
+          { label: t('fair'), value: stats.fairPercent, quality: 'fair' as const },
+          { label: t('poor'), value: stats.poorPercent, quality: 'poor' as const },
         ].map(item => (
           <div key={item.label} className="flex items-center justify-between">
             <span style={{ color: getSignalQualityColor(item.quality) }} className="font-medium">
@@ -151,7 +171,7 @@ function CoverageStatsPanel({ stats }: { stats: CoverageStats }) {
       </div>
 
       <div className="flex justify-between text-xs border-t border-gray-100 pt-2">
-        <span className="text-gray-500">Avg RSSI</span>
+        <span className="text-gray-500">{t('avgRssi')}</span>
         <span className="font-medium text-gray-700">{stats.avgRSSI.toFixed(1)} dBm</span>
       </div>
     </div>

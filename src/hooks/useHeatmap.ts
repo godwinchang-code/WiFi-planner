@@ -11,6 +11,7 @@ type UseHeatmapOptions = {
   walls: Wall[];
   pixelsPerMeter: number;
   band: Band;
+  opacity: number;
   enabled: boolean;
   onStatsUpdate?: (stats: CoverageStats) => void;
 };
@@ -27,7 +28,7 @@ export function useHeatmap(
 ) {
   const {
     width, height, resolution, accessPoints, walls,
-    pixelsPerMeter, band, enabled, onStatsUpdate,
+    pixelsPerMeter, band, opacity, enabled, onStatsUpdate,
   } = options;
 
   const { engine } = useWasmEngine();
@@ -79,11 +80,13 @@ export function useHeatmap(
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
+    ctx.globalAlpha = opacity;
     ctx.drawImage(tempCanvas, 0, 0, width, height);
+    ctx.globalAlpha = 1;
   }, [
     engine, width, height, resolution,
     accessPoints, walls, pixelsPerMeter, band,
-    enabled, onStatsUpdate, canvasRef,
+    opacity, enabled, onStatsUpdate, canvasRef,
   ]);
 
   useEffect(() => {

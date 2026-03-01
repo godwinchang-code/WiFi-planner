@@ -11,13 +11,14 @@ type Props = {
   walls: Wall[];
   pixelsPerMeter: number;
   band: Band;
+  opacity: number;
   enabled: boolean;
   onStatsUpdate: (stats: CoverageStats) => void;
 };
 
 export function HeatmapLayer({
   width, height, resolution, accessPoints, walls,
-  pixelsPerMeter, band, enabled, onStatsUpdate,
+  pixelsPerMeter, band, opacity, enabled, onStatsUpdate,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -25,7 +26,7 @@ export function HeatmapLayer({
 
   useHeatmap(canvasRef, {
     width, height, resolution, accessPoints, walls,
-    pixelsPerMeter, band, enabled, onStatsUpdate: stableOnStatsUpdate,
+    pixelsPerMeter, band, opacity, enabled, onStatsUpdate: stableOnStatsUpdate,
   });
 
   return (

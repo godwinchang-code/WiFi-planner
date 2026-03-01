@@ -18,8 +18,20 @@ WASM_SRC="wasm-engine/src"
 WASM_TOML="wasm-engine/Cargo.toml"
 OUT_DIR="src/wasm/pkg"
 
+have_wasm_pack() {
+  command -v wasm-pack >/dev/null 2>&1
+}
+
+have_prebuilt_pkg() {
+  [[ -f "${OUT_DIR}/wifi_planner_wasm_bg.wasm" && -f "${OUT_DIR}/wifi_planner_wasm_bg.js" ]]
+}
+
 # If the caller requests a forced rebuild, skip the stamp logic.
 if [[ "${FORCE_WASM:-}" == "1" ]]; then
+  if ! have_wasm_pack; then
+    echo "[build-wasm] ERROR: FORCE_WASM=1 requires wasm-pack, but it is not installed." >&2
+    exit 127
+  fi
   echo "[build-wasm] FORCE_WASM=1 – rebuilding unconditionally"
   wasm-pack build wasm-engine --target bundler --out-dir "../${OUT_DIR}" --out-name wifi_planner_wasm
   exit 0
@@ -42,7 +54,17 @@ if [[ -f "${STAMP_FILE}" && -d "${OUT_DIR}" ]]; then
 fi
 
 echo "[build-wasm] Sources changed – running wasm-pack…"
-wasm-pack build wasm-engine --target bundler --out-dir "../${OUT_DIR}" --out-name wifi_planner_wasm
+if have_wasm_pack; then
+  wasm-pack build wasm-engine --target bundler --out-dir "../${OUT_DIR}" --out-name wifi_planner_wasm
+else
+  if have_prebuilt_pkg; then
+    echo "[build-wasm] wasm-pack not found; using committed prebuilt artifacts in ${OUT_DIR}."
+    echo "[build-wasm] Install wasm-pack to regenerate WASM from local Rust changes."
+  else
+    echo "[build-wasm] ERROR: wasm-pack not found and no prebuilt artifacts in ${OUT_DIR}." >&2
+    exit 127
+  fi
+fi
 
 echo "${CURRENT_HASH}" > "${STAMP_FILE}"
 echo "[build-wasm] Done. Stamp updated."
