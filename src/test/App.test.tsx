@@ -8,6 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import App from '../App';
 import { WasmProvider } from '../context/WasmContext';
+import { I18nProvider } from '../i18n/I18nContext';
 
 // ── Mock the WASM pkg so the module system doesn't try to load the binary ──
 vi.mock('../wasm/pkg/wifi_planner_wasm', () => ({
@@ -29,10 +30,13 @@ vi.mock('../wasm/pkg/wifi_planner_wasm', () => ({
 }));
 
 function renderApp() {
+  localStorage.setItem('wifi-planner-locale', 'en');
   return render(
-    <WasmProvider>
-      <App />
-    </WasmProvider>,
+    <I18nProvider>
+      <WasmProvider>
+        <App />
+      </WasmProvider>
+    </I18nProvider>,
   );
 }
 
