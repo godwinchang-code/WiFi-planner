@@ -43,11 +43,11 @@ A browser-based WiFi network coverage planning tool. Place access points on a fl
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| **Node.js** | ≥ 18 | JavaScript runtime + npm |
-| **Rust** | ≥ 1.70 (stable) | Compile the WASM engine **and** the web server |
-| **wasm-pack** | ≥ 0.12 | Build Rust → WebAssembly |
+| **Node.js** | ≥ 18 (CI uses 20) | JavaScript runtime + npm |
+| **Rust** | ≥ 1.70 (stable, optional) | Rebuild the WASM engine from Rust sources and build the embedded web server |
+| **wasm-pack** | ≥ 0.12 (optional) | Build Rust → WebAssembly |
 
-### Install Rust
+### Install Rust + wasm-pack (only needed if you modify `wasm-engine/`)
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -62,8 +62,6 @@ cargo install wasm-pack
 curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 ```
 
----
-
 ## Installation
 
 ```bash
@@ -72,16 +70,16 @@ git clone https://github.com/godwinchang-code/WiFi-planner.git
 cd WiFi-planner
 
 # 2. Install JavaScript dependencies
-npm install
+npm ci
 
-# 3. Build the Rust/WASM engine
+# 3. (Optional) Rebuild Rust/WASM artifacts
 npm run build:wasm
 ```
 
 The `build:wasm` step compiles `wasm-engine/` with wasm-pack and writes the
-output to `src/wasm/pkg/`. The compiled `.wasm` binary (~32 KB) is also
-committed to the repository so CI environments without Rust/wasm-pack can
-skip this step.
+output to `src/wasm/pkg/`. The compiled `.wasm` binary (~32 KB) is committed,
+so front-end development/build works even if `wasm-pack` is not installed
+(except when you need to regenerate WASM after Rust changes).
 
 ---
 
@@ -108,6 +106,7 @@ npm run preview      # serve the dist/ folder locally (Node.js, dev only)
 
 Output is written to `dist/`. The `.wasm` file is included as a hashed asset
 by `vite-plugin-wasm` and served with the correct `application/wasm` MIME type.
+If `wasm-pack` is unavailable, the build uses committed prebuilt WASM artifacts.
 
 ---
 
@@ -189,10 +188,10 @@ cd wasm-engine && cargo test
 ### All tests
 
 ```bash
-npm run test:all      # Rust (21 tests) + TS (56 tests)
+npm run test:all      # Rust + TS tests
 ```
 
-Current totals: **77 tests, all passing**.
+Tip: run `npm run lint && npm test && npm run build` before opening a PR.
 
 ---
 
