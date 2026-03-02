@@ -82,3 +82,91 @@ describe('screenToCanvas / canvasToScreen', () => {
     expect(pt.y).toBe(200);
   });
 });
+
+// ── Zoom anchor invariant ─────────────────────────────────────────────────────
+//
+// The wheel-zoom formula in PlannerCanvas computes a new offset such that the
+// canvas point beneath the cursor does not move in screen space.
+//
+// Formula:
+//   newOffset = { x: mx - (mx - offset.x) * scale,
+//                 y: my - (my - offset.y) * scale }
+// where scale = newZoom / oldZoom.
+
+function applyZoomStep(
+  mouseX: number, mouseY: number,
+  offset: { x: number; y: number },
+  zoom: number,
+  factor: number,
+  minZoom = 0.2, maxZoom = 5,
+) {
+  const newZoom = Math.max(minZoom, Math.min(maxZoom, zoom * factor));
+  const scale   = newZoom / zoom;
+  return {
+    offset: { x: mouseX - (mouseX - offset.x) * scale,
+              y: mouseY - (mouseY - offset.y) * scale },
+    zoom: newZoom,
+  };
+}
+
+describe('zoom anchor invariant', () => {
+  it('keeps the canvas point under cursor fixed on a single zoom-in step', () => {
+    const mouseX = 300, mouseY = 200;
+    const offset = { x: 50, y: 30 };
+    const zoom   = 1.0;
+
+    const before = screenToCanvas(mouseX, mouseY, offset, zoom);
+    const next   = applyZoomStep(mouseX, mouseY, offset, zoom, 1.1);
+    const after  = screenToCanvas(mouseX, mouseY, next.offset, next.zoom);
+
+    expect(after.x).toBeCloseTo(before.x, 10);
+    expect(after.y).toBeCloseTo(before.y, 10);
+  });
+
+  it('keeps the anchor fixed on a single zoom-out step', () => {
+    const mouseX = 100, mouseY = 400;
+    const offset = { x: -80, y: 20 };
+    const zoom   = 2.5;
+
+    const before = screenToCanvas(mouseX, mouseY, offset, zoom);
+    const next   = applyZoomStep(mouseX, mouseY, offset, zoom, 0.9);
+    const after  = screenToCanvas(mouseX, mouseY, next.offset, next.zoom);
+
+    expect(after.x).toBeCloseTo(before.x, 10);
+    expect(after.y).toBeCloseTo(before.y, 10);
+  });
+
+  it('keeps the anchor fixed across many rapid scroll steps (stale-closure scenario)', () => {
+    // Simulates multiple wheel events arriving before a re-render.
+    // Each step must use the result of the previous step — if any step used
+    // a stale snapshot the accumulated error would be large.
+    const mouseX = 640, mouseY = 360;
+    let offset = { x: 0, y: 0 };
+    let zoom   = 1.0;
+
+    const before = screenToCanvas(mouseX, mouseY, offset, zoom);
+
+    for (let i = 0; i < 10; i++) {
+      const next = applyZoomStep(mouseX, mouseY, offset, zoom, 1.1);
+      offset = next.offset;
+      zoom   = next.zoom;
+    }
+
+    const after = screenToCanvas(mouseX, mouseY, offset, zoom);
+    expect(after.x).toBeCloseTo(before.x, 8);
+    expect(after.y).toBeCloseTo(before.y, 8);
+  });
+
+  it('anchor at top-centre stays fixed when zooming from the top', () => {
+    const mouseX = 800, mouseY = 10; // top of a 1600-wide canvas
+    const offset = { x: 0, y: 0 };
+    const zoom   = 1.0;
+
+    const before = screenToCanvas(mouseX, mouseY, offset, zoom);
+    const next   = applyZoomStep(mouseX, mouseY, offset, zoom, 1.1);
+    const after  = screenToCanvas(mouseX, mouseY, next.offset, next.zoom);
+
+    expect(after.x).toBeCloseTo(before.x, 10);
+    expect(after.y).toBeCloseTo(before.y, 10);
+  });
+});

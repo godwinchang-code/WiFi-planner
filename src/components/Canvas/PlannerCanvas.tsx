@@ -32,6 +32,15 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
   const [isPanning, setIsPanning] = useState(false);
   const lastPanPoint = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  // Refs that always hold the latest zoom/offset values.
+  // The wheel event fires many times per frame on trackpads; if the handler
+  // closes over React state, rapid events all see the same stale snapshot
+  // and produce jumpy / uncontrolled zoom.  Reading from refs avoids this.
+  const zoomRef = useRef(canvasZoom);
+  const offsetRef = useRef(canvasOffset);
+  zoomRef.current = canvasZoom;
+  offsetRef.current = canvasOffset;
+
   const { width, height } = floorPlan;
 
   const getCanvasPoint = useCallback((e: React.MouseEvent) => {
@@ -113,13 +122,15 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
       const dx = e.clientX - lastPanPoint.current.x;
       const dy = e.clientY - lastPanPoint.current.y;
       lastPanPoint.current = { x: e.clientX, y: e.clientY };
-      setCanvasOffset({ x: canvasOffset.x + dx, y: canvasOffset.y + dy });
+      // Use ref so rapid mousemove events always see the latest offset
+      const cur = offsetRef.current;
+      setCanvasOffset({ x: cur.x + dx, y: cur.y + dy });
       return;
     }
 
     const pt = getCanvasPoint(e);
     setMousePos(pt);
-  }, [isPanning, canvasOffset, getCanvasPoint, setCanvasOffset]);
+  }, [isPanning, getCanvasPoint, setCanvasOffset]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     if (e.button === 1) {
@@ -136,17 +147,24 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(0.2, Math.min(5, canvasZoom * delta));
+    // Read refs — never stale, even when many wheel events arrive before a
+    // re-render (common with smooth-scrolling trackpads).
+    const zoom   = zoomRef.current;
+    const offset = offsetRef.current;
 
+    const factor  = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(0.2, Math.min(5, zoom * factor));
+    const scale   = newZoom / zoom;
+
+    // Keep the canvas point that sits under the cursor fixed in screen space.
     const newOffset = {
-      x: mouseX - (mouseX - canvasOffset.x) * (newZoom / canvasZoom),
-      y: mouseY - (mouseY - canvasOffset.y) * (newZoom / canvasZoom),
+      x: mouseX - (mouseX - offset.x) * scale,
+      y: mouseY - (mouseY - offset.y) * scale,
     };
 
     setCanvasZoom(newZoom);
     setCanvasOffset(newOffset);
-  }, [canvasZoom, canvasOffset, setCanvasZoom, setCanvasOffset]);
+  }, [setCanvasZoom, setCanvasOffset]); // Stable — no zoom/offset deps needed
 
   useEffect(() => {
     const container = containerRef.current;

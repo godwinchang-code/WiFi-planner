@@ -6,15 +6,11 @@ type Props = {
 };
 
 export function GridLayer({ width, height, pixelsPerMeter, zoom }: Props) {
-  // Only show grid lines that make sense at current zoom
-  const minGridSpacingPx = 20; // minimum pixels between grid lines on screen
-  const baseSpacing = pixelsPerMeter; // 1 grid cell = 1 meter
-
-  // Determine grid spacing in canvas units
-  let gridSpacing = baseSpacing;
-  while (gridSpacing * zoom < minGridSpacingPx) {
-    gridSpacing *= 2;
-  }
+  // One grid cell = one metre in canvas units.  The SVG group's scale()
+  // transform handles visual sizing, so the cell count is always
+  //   floor(width / pixelsPerMeter) × floor(height / pixelsPerMeter)
+  // — independent of zoom level.
+  const gridSpacing = pixelsPerMeter;
 
   const majorGridEvery = 5; // every 5 minor grids = major grid
   const lines: React.ReactNode[] = [];
