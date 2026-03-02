@@ -1,225 +1,137 @@
-# WiFi Planner — Three-Feature Implementation Plan
+# WiFi Planner — Implementation Specification
 
-## Features to implement
-1. **Built-in typical scenarios** (residential + SMB templates)
-2. **Automatic wall detection** from uploaded floor plan images (pure frontend)
-3. **AP auto-deployment** (greedy coverage optimisation algorithm)
+## Implemented Features
 
-All work goes on branch `claude/wifi-planner-implementation-5e67e`.
+1. **Built-in typical scenarios** — residential + SMB floor plan templates
+2. **Automatic wall detection** — pure-frontend Sobel edge detection from uploaded images
+3. **AP auto-deployment** — greedy set-cover coverage optimisation
+4. **Multi-floor support** — independent wall/AP/floorPlan data per floor with tab UI
+
+All work is on branch `claude/wifi-planner-implementation-5e67e`.
 
 ---
 
-## Current codebase key facts
+## Current Codebase Key Facts
 
 | Item | Value |
 |------|-------|
 | Canvas coordinate unit | pixels |
 | Default scale | 20 px / metre |
 | Default canvas | 1000 × 700 px → 50 m × 35 m |
-| Wall struct | `{id, x1,y1, x2,y2, type: WallType}` |
+| Wall struct | `{id, x1, y1, x2, y2, type: WallType}` |
 | AccessPoint struct | `{id, x, y, name, band, channel, txPower, gain, enabled, color}` |
 | FloorPlan struct | `{imageData, width, height, scale}` |
-| Store action for batch load | `importPlan(json)` — resets history + sets all data |
-| History snapshots | only `accessPoints[]` + `walls[]` |
+| Floor struct | `{id, name, walls, accessPoints, floorPlan, pixelsPerMeter}` |
+| Export format version | `1.2` (floors array); v1.0/v1.1 imported as single floor |
+| Persistence key | `wifi-planner-storage-v2` |
+| History snapshots | `accessPoints[]` + `walls[]` per session (reset on floor switch) |
 | RSSI simulation | `generateHeatmap()` in `src/utils/signalSimulation.ts` |
 
 ---
 
 ## Feature 1 — Built-in Typical Scenarios
 
-### 1.1  New file: `src/data/scenarios.ts`
+### File: `src/data/scenarios.ts`
 
-Exports a `SCENARIOS` array of `ScenarioTemplate` objects.
+Exports `SCENARIOS: ScenarioTemplate[]` — 4 built-in templates.
 
 ```ts
 type ScenarioTemplate = {
   id: string;
-  name: string;           // "家庭三居室 / Home 3BR"
-  nameEn: string;
+  name: string;           // bilingual, e.g. "家庭公寓 / Apartment"
   category: 'residential' | 'smb';
   description: string;
   floorPlan: { width: number; height: number };
   pixelsPerMeter: number;
-  walls: Omit<Wall, 'id'>[];        // ids assigned at load time
+  walls: Omit<Wall, 'id'>[];        // IDs assigned at load time
   accessPoints: Omit<AccessPoint, 'id'>[];
 };
 ```
 
-**Four pre-built scenarios:**
+| ID | Name | Canvas | ppm | Pre-placed APs |
+|----|------|--------|-----|----------------|
+| `home-apartment` | 家庭公寓 / Apartment | 800 × 640 | 80 | 1 × 2.4 GHz |
+| `home-3br` | 三居室住宅 / 3BR Home | 1200 × 640 | 80 | 2 × 2.4 GHz |
+| `smb-open-office` | SMB开放办公 / Open Office | 1380 × 720 | 30 | 4 × (3×5 GHz + 1×2.4 GHz) |
+| `smb-floor` | SMB楼层 / Office Floor | 1500 × 840 | 30 | 6 × (4×5 GHz + 2×2.4 GHz) |
 
-| ID | Name | Canvas | ppm | Rooms |
-|----|------|--------|-----|-------|
-| `home-apartment` | 家庭公寓 / Home Apartment | 800 × 600 | 20 | Living, bedroom, kitchen, bath |
-| `home-3br` | 家庭三居室 / Home 3BR | 1000 × 700 | 20 | Living, 3 bedrooms, kitchen, 2 baths |
-| `smb-open-office` | SMB开放办公 / SMB Open Office | 1200 × 800 | 15 | Reception, open office, server room, meeting |
-| `smb-floor` | SMB楼层 / SMB Floor | 1600 × 900 | 12 | Multiple offices, corridor, conference, lobby |
+### UI: `src/components/Sidebar/ScenarioPanel.tsx`
 
-Each scenario includes:
-- Perimeter exterior walls
-- Interior concrete/light walls defining rooms
-- Pre-positioned APs with reasonable band/power/channel choices
-
-### 1.2  Store changes (`src/store/plannerStore.ts`)
-
-Add action:
-```ts
-loadScenario: (id: string) => void
-```
-Implementation: find the scenario, generate fresh ids for walls and APs, then call the same path as `importPlan` (reset history, set state).
-
-### 1.3  UI: new Sidebar panel `src/components/Sidebar/ScenarioPanel.tsx`
-
-- Collapsible section at the top of the sidebar (above FloorPlanSettings)
-- Two category tabs: 🏠 家庭 / 🏢 商业
-- Grid of scenario cards (icon + name + short description)
-- Clicking a card shows a small confirmation dialog if canvas already has data, then calls `loadScenario(id)`
-- Inline SVG thumbnails drawn programmatically from scenario wall data (no external assets)
+- Two tabs: 🏠 家庭 / 🏢 商业
+- Scenario cards with inline SVG thumbnails generated from wall data
+- Confirmation dialog before overwriting non-empty canvas
+- Calls `loadScenario(scenario)` on the active floor
 
 ---
 
-## Feature 2 — Automatic Wall Detection from Floor Plan Images
+## Feature 2 — Automatic Wall Detection
 
-### 2.1  Algorithm overview (pure frontend, Canvas 2D API, no library)
+### File: `src/utils/wallDetection.ts`
 
-```
-Upload image
-  → render to offscreen canvas (same size as floor plan)
-  → grayscale + contrast stretch
-  → Sobel edge detection  (3×3 kernel on ImageData)
-  → threshold → binary edge image
-  → Probabilistic Hough line accumulator
-      – sample random edge pixels
-      – accumulate (r, θ) in polar space
-      – extract peaks above minVotes
-  → Convert (r, θ) → line segments clipped to canvas bounds
-  → Merge nearly-parallel nearby segments (DBSCAN-style clustering)
-  → Filter out short segments (< minLength px)
-  → Output: WallSegment[] {x1,y1,x2,y2}
-```
-
-Performance target: < 2 s for a 1000 × 700 px image, single JS thread.
-
-### 2.2  New file: `src/utils/wallDetection.ts`
+Pure-frontend image processing pipeline (Canvas 2D API, no external library).
 
 ```ts
 export type WallSegment = { x1: number; y1: number; x2: number; y2: number };
 
-export function detectWallsFromCanvas(
+export type WallDetectionOptions = {
+  edgeThreshold?: number;   // default 30
+  minLength?: number;       // default 40 px
+  maxGap?: number;          // default 8 px
+  mergeTolerance?: number;  // default 6 px
+};
+
+export function detectWallsFromImageData(
   imageData: ImageData,
-  options?: {
-    edgeThreshold?: number;   // 0-255, default 40
-    minLineLength?: number;   // px,  default 60
-    maxLineGap?: number;      // px,  default 20
-    numSamples?: number;      // Hough iterations, default 2000
-  }
+  options?: WallDetectionOptions,
 ): WallSegment[];
+
+export async function detectWallsFromImage(
+  imageUrl: string,
+  targetWidth: number,
+  targetHeight: number,
+  options?: WallDetectionOptions,
+): Promise<WallSegment[]>;
 ```
 
-Internally calls:
-- `toGrayscale(ImageData): Uint8ClampedArray`
-- `sobelEdges(gray, width, height): Uint8ClampedArray`
-- `probabilisticHough(edges, width, height, opts): WallSegment[]`
-- `mergeSegments(segments, angleTol, distTol): WallSegment[]`
+**Pipeline:** `toGrayscale` → `sobelEdges` (3×3 kernel) → `findHorizontalSegments` +
+`findVerticalSegments` (run-length with gap bridging) → `mergeHorizontalSegments` +
+`mergeVerticalSegments` (cluster nearby parallel segments).
 
-### 2.3  Store changes
+Performance target: < 2 s for 1000 × 700 px on a single JS thread.
 
-Add to state:
+### Ephemeral store state
+
 ```ts
-pendingWalls: Wall[] | null;    // walls detected, awaiting user confirmation
+pendingWalls: Wall[] | null;   // detected, awaiting confirmation
 ```
 
-Add actions:
-```ts
-setPendingWalls: (walls: Wall[] | null) => void;
-applyPendingWalls: () => void;   // merges pendingWalls into walls[], pushes history
-```
+Not persisted; not part of undo/redo snapshots.
 
-`pendingWalls` is **not** persisted and **not** part of undo/redo history snapshots (it is ephemeral UI state).
+Actions: `setPendingWalls(segments, wallType?)`, `applyPendingWalls()`, `discardPendingWalls()`
 
-### 2.4  UI changes
+### UI
 
-**`FloorPlanSettings.tsx`** — add after existing image upload section:
-- "🔍 自动识别墙体 / Detect Walls" button (only enabled when `floorPlan.imageData !== null`)
-- While running: spinner + "Analysing…"
-- After detection:
-  - Success banner: "Detected N walls — review and apply"
-  - "Apply Detected Walls" green button
-  - "Discard" button
-- Sensitivity slider (edge threshold 20–80, default 40)
+**`FloorPlanSettings.tsx`** — sensitivity slider (15–80) + "Detect Walls" button +
+"Apply / Discard" banner shown when `pendingWalls` is set.
 
-**`PlannerCanvas.tsx`** — add rendering of `pendingWalls`:
-- Render as dashed yellow lines on top of the regular wall layer
-- With a "pending" indicator (smaller opacity, dashed stroke)
-
-No separate modal — the pending walls are visible directly on the canvas so the user can see them in context, delete individual ones if needed, then click Apply.
+**`PlannerCanvas.tsx`** — pending walls rendered as yellow dashed lines (`#f59e0b`,
+`strokeDasharray`) above the regular wall layer.
 
 **User workflow:**
-1. Upload floor plan image → see image on canvas
-2. Click "Detect Walls" → ~1-2 s processing → yellow dashed lines appear on canvas
-3. Review; use Erase tool to remove bad detections
-4. Click "Apply" → walls become permanent (and go into undo history)
+1. Upload floor plan image
+2. Adjust sensitivity slider, click "Detect Walls" (~1–2 s)
+3. Review yellow dashed lines on canvas; use Erase tool to remove bad detections
+4. Click "Apply" → walls become permanent (pushed into undo history)
 
 ---
 
 ## Feature 3 — AP Auto-Deployment
 
-### 3.1  Algorithm: Greedy Set Cover with RSSI model
+### File: `src/utils/autoDeployment.ts`
 
-```
-Input:
-  floorPlan dimensions, pixelsPerMeter,
-  walls (for attenuation),
-  targetRSSI (dBm),
-  minAPSeparation (m),
-  targetCoveragePct (0–1),
-  band, txPower, gain,
-  maxAPs
-
-Step 1 — Build candidate grid
-  Candidate positions: every (gridStep) pixels inside floor plan bounds
-  gridStep = max(20, minAPSeparation × pixelsPerMeter / 3)
-
-Step 2 — Compute coverage sets (JS signal engine)
-  For each candidate position p:
-    For each sample point s in a coarser evaluation grid:
-      RSSI(p → s) = compute using existing path-loss + wall model
-      If RSSI >= targetRSSI: mark s as "coverable by p"
-  coverageSet[p] = Set of sample points covered
-
-Step 3 — Greedy placement loop
-  uncovered = all sample points
-  placed = []
-  while uncovered.size > 0 and placed.length < maxAPs:
-    pick p = argmax |coverageSet[p] ∩ uncovered|
-    if best coverage gain < minGain: break
-    check minAPSeparation distance from all placed[]
-    placed.push(p)
-    uncovered -= coverageSet[p]
-
-Step 4 — Return placed[] positions + coverage statistics
-```
-
-Performance: ~1-3 s for typical floor plan using JS simulation at evaluation grid resolution of 40 px.
-
-### 3.2  New file: `src/utils/autoDeployment.ts`
+Greedy set-cover algorithm using JS RSSI model.
 
 ```ts
-export type DeploymentOptions = {
-  band: Band;
-  txPower: number;          // dBm, default 20
-  gain: number;             // dBi, default 2
-  targetRSSI: number;       // dBm, default -65
-  minSeparationM: number;   // metres, default 8
-  targetCoveragePct: number;// 0–1, default 0.90
-  maxAPs: number;           // default 10
-};
-
-export type DeploymentResult = {
-  positions: Array<{ x: number; y: number }>;
-  achievedCoveragePct: number;
-  uncoveredPct: number;
-};
-
 export function computeAutoDeployment(
   floorPlan: { width: number; height: number },
   walls: Wall[],
@@ -228,90 +140,170 @@ export function computeAutoDeployment(
 ): DeploymentResult;
 ```
 
-Uses `generateHeatmap`-style logic from `signalSimulation.ts` (direct JS function call, not WASM, to avoid async complexity in a synchronous algorithm).
+**Algorithm:**
+1. Build evaluation sample grid (step = `max(20, 2×ppm)`)
+2. Build candidate placement grid (step = `max(30, 3×ppm)`)
+3. For each candidate: precompute set of evaluation points with RSSI ≥ targetRSSI
+4. Greedy loop: pick candidate with maximum new coverage, enforce `minSeparationM`, repeat until target coverage reached or maxAPs exhausted
+5. Return positions + achieved coverage %
 
-### 3.3  Store changes
+Uses `calculateRSSI()` from `signalSimulation.ts` directly (synchronous JS, no WASM).
 
-Add to state:
+### Types (`src/types/index.ts`)
+
+```ts
+export type DeploymentOptions = {
+  band: Band;
+  txPower: number;           // dBm
+  gain: number;              // dBi
+  targetRSSI: number;        // dBm threshold for "covered"
+  minSeparationM: number;    // minimum AP-to-AP distance in metres
+  targetCoveragePct: number; // 0–1
+  maxAPs: number;
+};
+
+export type DeploymentResult = {
+  positions: Array<{ x: number; y: number }>;
+  achievedCoveragePct: number;
+  uncoveredPct: number;
+};
+```
+
+### Ephemeral store state
+
 ```ts
 suggestedAPs: Array<{ x: number; y: number }> | null;
 suggestedAPOptions: DeploymentOptions | null;
 ```
 
-Add actions:
+Not persisted; not part of undo/redo snapshots.
+
+Actions: `setSuggestedAPs(positions, opts)`, `applySuggestedAPs()`, `clearSuggestedAPs()`
+
+### UI: `src/components/Sidebar/AutoDeployPanel.tsx`
+
+Between APPanel and HeatmapSettings in the sidebar.
+
+Controls: band selector, target RSSI dropdown (−60/−65/−70 dBm), min separation input,
+max APs input, "Calculate" button with spinner.  After calculation: result banner
+showing AP count + coverage %, "Apply" and "Clear" buttons.
+
+**`PlannerCanvas.tsx`** — suggested APs rendered as blue ghost circles (`#3b82f6`,
+`fillOpacity: 0.15`, dashed stroke) with "建议" label.  Non-interactive.
+
+---
+
+## Feature 4 — Multi-Floor Support
+
+### Type: `Floor` (`src/types/index.ts`)
+
 ```ts
-setSuggestedAPs: (positions, options) => void;
-clearSuggestedAPs: () => void;
-applySuggestedAPs: () => void;  // creates real APs from suggestedAPs, pushes history
+export type Floor = {
+  id: string;
+  name: string;
+  walls: Wall[];
+  accessPoints: AccessPoint[];
+  floorPlan: FloorPlan;
+  pixelsPerMeter: number;
+};
 ```
 
-`suggestedAPs` is **not** persisted and **not** part of undo/redo snapshots.
+### Store (`src/store/plannerStore.ts`)
 
-### 3.4  UI: new Sidebar panel `src/components/Sidebar/AutoDeployPanel.tsx`
-
-Located between APPanel and HeatmapSettings.
-
-Controls:
-```
-🤖 AP 自动部署 / Auto Deploy
-──────────────────────────────
-频段 Band:       [2.4GHz ▼]
-目标信号 Target: [-65 dBm ▼]  (options: -60 / -65 / -70)
-最小间距 Min Sep:[8] m
-最大数量 Max APs:[10]
-[▶ 计算部署 / Calculate]      ← triggers algorithm, shows spinner
-
---- (after calculation) ---
-建议部署 X 个AP,覆盖率 Y%
-[✔ 应用部署 / Apply]  [✘ 取消 / Clear]
+**New state:**
+```ts
+floors: Floor[];        // all floors (persisted)
+activeFloorId: string;  // which floor is displayed
 ```
 
-**`PlannerCanvas.tsx`** — render `suggestedAPs`:
-- Blue semi-transparent circles (same style as AccessPointMarker but dashed outline, ghosted)
-- Label "建议" / "Suggested"
-- Not interactive (can't drag)
-- Disappear when `applySuggestedAPs()` is called
+The existing top-level `walls`, `accessPoints`, `floorPlan`, `pixelsPerMeter` remain as
+the **active floor's working state**.  They are loaded from `floors[activeFloorId]` on
+startup and on floor switch.
+
+**New actions:**
+
+| Action | Behaviour |
+|--------|-----------|
+| `addFloor()` | Saves current working state, creates new empty floor, switches to it |
+| `deleteFloor(id)` | Requires ≥ 2 floors; if active, switches to adjacent floor first |
+| `renameFloor(id, name)` | Updates `floors[id].name` |
+| `switchFloor(id)` | Saves current → `floors[activeFloorId]`, loads target floor into working state; resets undo history |
+| `moveFloor(id, 'up'\|'down')` | Reorders floor in the array |
+
+**Persistence:**
+- Storage key: `wifi-planner-storage-v2` (breaking change from v1; old data discarded)
+- `partialize` serialises: `floors` (imageData stripped), `activeFloorId`, `walls`,
+  `accessPoints`, `pixelsPerMeter`, `showHeatmap`, `heatmapBand`, `heatmapResolution`
+- `_history` / `_historyIndex` are session-only (not persisted; reset on floor switch)
+
+**Export format v1.2:**
+```json
+{
+  "version": "1.2",
+  "floors": [ { "id": "...", "name": "1F", "walls": [], "accessPoints": [], ... } ],
+  "activeFloorId": "floor-1",
+  "exportedAt": "..."
+}
+```
+
+Import supports v1.0 / v1.1 (migrated to single floor) and v1.2.
+
+**`loadScenario`** and **`importPlan`** both update `floors` as well as the working state.
+
+### UI: `src/components/Canvas/FloorTabs.tsx`
+
+Horizontal tab bar rendered above the canvas (inside the right-hand column in `App.tsx`).
+
+| Interaction | Result |
+|-------------|--------|
+| Single click on tab | `switchFloor(id)` |
+| Double click on tab | Inline rename (input field, Enter/Esc/blur to commit) |
+| ‹ / › buttons (active tab only) | `moveFloor(id, 'up' \| 'down')` |
+| × button (active tab, ≥ 2 floors) | `deleteFloor(id)` with `window.confirm` |
+| "+ 添加楼层" button | `addFloor()` |
+
+Active tab is styled with white background, blue label, bottom border matching canvas.
+Floor count is shown on the right.
+
+### Layout (`src/App.tsx`)
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Sidebar (320 px)  │  Column (flex: 1)               │
+│                    │  ┌─────────────── FloorTabs ──┐  │
+│                    │  │ 1F  2F  3F  + 添加楼层 3层 │  │
+│                    │  └────────────────────────────┘  │
+│                    │  ┌─────────── PlannerCanvas ──┐  │
+│                    │  │                            │  │
+│                    │  └────────────────────────────┘  │
+└──────────────────────────────────────────────────────┘
+```
 
 ---
 
-## File Change Summary
+## Complete File Index
 
-| File | Change |
-|------|--------|
-| `src/data/scenarios.ts` | **New** — 4 built-in scenarios with walls + APs |
-| `src/utils/wallDetection.ts` | **New** — Sobel + probabilistic Hough implementation |
-| `src/utils/autoDeployment.ts` | **New** — greedy set-cover deployment algorithm |
-| `src/components/Sidebar/ScenarioPanel.tsx` | **New** — scenario selection UI |
-| `src/components/Sidebar/AutoDeployPanel.tsx` | **New** — auto-deploy configuration UI |
-| `src/components/Sidebar/FloorPlanSettings.tsx` | **Edit** — add "Detect Walls" button + pending walls UI |
-| `src/components/Sidebar/Sidebar.tsx` | **Edit** — add ScenarioPanel + AutoDeployPanel |
-| `src/components/Canvas/PlannerCanvas.tsx` | **Edit** — render pendingWalls + suggestedAPs |
-| `src/store/plannerStore.ts` | **Edit** — add loadScenario, setPendingWalls, applyPendingWalls, setSuggestedAPs, applySuggestedAPs, clearSuggestedAPs |
-| `src/types/index.ts` | **Edit** — add ScenarioTemplate type, DeploymentOptions, DeploymentResult |
-
----
-
-## Implementation order
-
-1. **Types** — extend `src/types/index.ts` first (all features depend on it)
-2. **Scenarios data** — `src/data/scenarios.ts` (self-contained data)
-3. **Wall detection util** — `src/utils/wallDetection.ts`
-4. **Auto-deployment util** — `src/utils/autoDeployment.ts`
-5. **Store** — add all new actions/state to `plannerStore.ts`
-6. **ScenarioPanel** — simplest UI component
-7. **AutoDeployPanel** — UI wired to store + algorithm
-8. **FloorPlanSettings** — add detect-walls button and pending wall UI
-9. **PlannerCanvas** — render pendingWalls + suggestedAPs overlays
-10. **Sidebar** — wire all new panels
-11. **Tests** — unit tests for wallDetection + autoDeployment algorithms
-12. **Build + push**
+| File | Status | Description |
+|------|--------|-------------|
+| `src/types/index.ts` | Edited | Added `Floor`, `ScenarioTemplate`, `DeploymentOptions`, `DeploymentResult` |
+| `src/data/scenarios.ts` | New | 4 built-in scenario templates |
+| `src/utils/wallDetection.ts` | New | Sobel edge detection pipeline |
+| `src/utils/autoDeployment.ts` | New | Greedy set-cover AP placement |
+| `src/store/plannerStore.ts` | Edited | Full multi-floor store; all new actions |
+| `src/components/Canvas/FloorTabs.tsx` | New | Floor tab bar above canvas |
+| `src/components/Canvas/PlannerCanvas.tsx` | Edited | Renders pendingWalls + suggestedAPs overlays |
+| `src/components/Sidebar/ScenarioPanel.tsx` | New | Scenario selection UI |
+| `src/components/Sidebar/AutoDeployPanel.tsx` | New | Auto-deployment controls |
+| `src/components/Sidebar/FloorPlanSettings.tsx` | Edited | Wall detection section |
+| `src/components/Sidebar/Sidebar.tsx` | Edited | Wires ScenarioPanel + AutoDeployPanel |
+| `src/App.tsx` | Edited | FloorTabs above PlannerCanvas |
 
 ---
 
-## Non-goals / out-of-scope for this iteration
+## Non-goals / Out of Scope
 
 - No backend / server-side processing
 - No LLM integration
 - No real-time collaborative editing
-- No multi-floor support
+- No cross-floor signal propagation (each floor simulated independently)
 - WASM engine unchanged (auto-deploy uses JS path deliberately)
