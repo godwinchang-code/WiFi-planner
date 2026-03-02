@@ -23,8 +23,9 @@ export function APPanel() {
           <label className="text-xs text-gray-600 whitespace-nowrap">{t('pxPerMeter')}</label>
           <input
             type="number"
-            min={5}
-            max={200}
+            min={1}
+            max={500}
+            step={1}
             value={pixelsPerMeter}
             onChange={e => setPixelsPerMeter(Number(e.target.value))}
             className="w-20 text-sm border border-gray-300 rounded px-2 py-1 focus:ring-1 focus:ring-primary-500 focus:border-primary-500"

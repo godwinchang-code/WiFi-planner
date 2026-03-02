@@ -122,6 +122,50 @@ describe('plannerStore - tools', () => {
   });
 });
 
+describe('plannerStore - floor scale safety', () => {
+  it('clamps pixelsPerMeter when set to invalid or too small values', () => {
+    usePlannerStore.getState().setPixelsPerMeter(0);
+    expect(usePlannerStore.getState().pixelsPerMeter).toBe(1);
+
+    usePlannerStore.getState().setPixelsPerMeter(-10);
+    expect(usePlannerStore.getState().pixelsPerMeter).toBe(1);
+
+    usePlannerStore.getState().setPixelsPerMeter(Number.NaN);
+    expect(usePlannerStore.getState().pixelsPerMeter).toBe(20);
+  });
+
+  it('sanitizes pixelsPerMeter on import for v1.0/v1.1 plans', () => {
+    const json = JSON.stringify({
+      version: '1.1',
+      accessPoints: [],
+      walls: [],
+      pixelsPerMeter: 0,
+    });
+    usePlannerStore.getState().importPlan(json);
+    expect(usePlannerStore.getState().pixelsPerMeter).toBe(1);
+  });
+
+  it('sanitizes floor pixelsPerMeter on import for v1.2 plans', () => {
+    const json = JSON.stringify({
+      version: '1.2',
+      activeFloorId: 'floor-1',
+      floors: [
+        {
+          id: 'floor-1',
+          name: '1F',
+          walls: [],
+          accessPoints: [],
+          floorPlan: { imageData: null, width: 1000, height: 700, scale: 0.1 },
+          pixelsPerMeter: 0,
+        },
+      ],
+    });
+    usePlannerStore.getState().importPlan(json);
+    expect(usePlannerStore.getState().pixelsPerMeter).toBe(1);
+    expect(usePlannerStore.getState().floors[0].pixelsPerMeter).toBe(1);
+  });
+});
+
 describe('plannerStore - undo/redo', () => {
   it('canUndo() is false at the initial baseline', () => {
     expect(usePlannerStore.getState().canUndo()).toBe(false);

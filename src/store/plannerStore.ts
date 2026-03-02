@@ -18,6 +18,9 @@ import { messages, type Locale, type MessageKey } from '../i18n/messages';
 
 const DEFAULT_AP_TX_POWER = 20;
 const DEFAULT_AP_GAIN = 2;
+const DEFAULT_PIXELS_PER_METER = 20;
+const MIN_PIXELS_PER_METER = 1;
+const MAX_PIXELS_PER_METER = 500;
 const DEFAULT_BAND: Band = '2.4GHz';
 const DEFAULT_FLOOR_PLAN: FloorPlan = {
   imageData: null,
@@ -33,11 +36,20 @@ const INITIAL_FLOOR: Floor = {
   walls: [],
   accessPoints: [],
   floorPlan: DEFAULT_FLOOR_PLAN,
-  pixelsPerMeter: 20,
+  pixelsPerMeter: DEFAULT_PIXELS_PER_METER,
 };
 
 const MAX_HISTORY = 50;
 const SUPPORTED_PLAN_VERSIONS = ['1.0', '1.1', '1.2'];
+
+function normalizePixelsPerMeter(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_PIXELS_PER_METER;
+  return Math.max(MIN_PIXELS_PER_METER, Math.min(MAX_PIXELS_PER_METER, value));
+}
+
+function normalizeFloorPixelsPerMeter(floor: Floor): Floor {
+  return { ...floor, pixelsPerMeter: normalizePixelsPerMeter(floor.pixelsPerMeter) };
+}
 
 function getLocaleForStoreMessages(): Locale {
   const saved = localStorage.getItem('wifi-planner-locale') as Locale | null;
@@ -215,7 +227,7 @@ export const usePlannerStore = create<PlannerStore>()(
       heatmapOpacity: 0.7,
       canvasOffset: { x: 0, y: 0 },
       canvasZoom: 1,
-      pixelsPerMeter: 20,
+      pixelsPerMeter: DEFAULT_PIXELS_PER_METER,
       _history: INITIAL_HISTORY,
       _historyIndex: 0,
       pendingWalls: null,
@@ -266,7 +278,7 @@ export const usePlannerStore = create<PlannerStore>()(
             walls: newActive.walls,
             accessPoints: newActive.accessPoints,
             floorPlan: newActive.floorPlan,
-            pixelsPerMeter: newActive.pixelsPerMeter,
+            pixelsPerMeter: normalizePixelsPerMeter(newActive.pixelsPerMeter),
             selectedAPId: null, selectedWallId: null,
             pendingWalls: null, suggestedAPs: null, suggestedAPOptions: null,
             _history: [{ accessPoints: newActive.accessPoints, walls: newActive.walls }],
@@ -295,7 +307,7 @@ export const usePlannerStore = create<PlannerStore>()(
           walls: newFloor.walls,
           accessPoints: newFloor.accessPoints,
           floorPlan: newFloor.floorPlan,
-          pixelsPerMeter: newFloor.pixelsPerMeter,
+          pixelsPerMeter: normalizePixelsPerMeter(newFloor.pixelsPerMeter),
           selectedAPId: null, selectedWallId: null,
           pendingWalls: null, suggestedAPs: null, suggestedAPOptions: null,
           _history: [{ accessPoints: newFloor.accessPoints, walls: newFloor.walls }],
@@ -430,7 +442,15 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       setCanvasOffset: (offset) => set({ canvasOffset: offset }),
       setCanvasZoom: (zoom) => set({ canvasZoom: zoom }),
-      setPixelsPerMeter: (ppm) => set({ pixelsPerMeter: ppm }),
+      setPixelsPerMeter: (ppm) => set((state) => {
+        const safePpm = normalizePixelsPerMeter(ppm);
+        return {
+          pixelsPerMeter: safePpm,
+          floors: state.floors.map(f =>
+            f.id === state.activeFloorId ? { ...f, pixelsPerMeter: safePpm } : f,
+          ),
+        };
+      }),
 
       // ── Undo / Redo ─────────────────────────────────────────────────────────
       undo: () => {
@@ -471,7 +491,7 @@ export const usePlannerStore = create<PlannerStore>()(
           activeFloorId: DEFAULT_FLOOR_ID,
           accessPoints: [], walls: [],
           floorPlan: DEFAULT_FLOOR_PLAN,
-          pixelsPerMeter: 20,
+          pixelsPerMeter: DEFAULT_PIXELS_PER_METER,
           selectedAPId: null, selectedWallId: null,
           activeTool: 'select',
           pendingWalls: null,
@@ -520,15 +540,16 @@ export const usePlannerStore = create<PlannerStore>()(
             alert('No floor data found in this file.');
             return;
           }
+          const normalizedFloors = floors.map(normalizeFloorPixelsPerMeter);
           const activeFloorId = (data.activeFloorId as string) || floors[0].id;
-          const activeFloor = floors.find(f => f.id === activeFloorId) || floors[0];
+          const activeFloor = normalizedFloors.find(f => f.id === activeFloorId) || normalizedFloors[0];
           set({
-            floors,
+            floors: normalizedFloors,
             activeFloorId: activeFloor.id,
             walls: activeFloor.walls || [],
             accessPoints: activeFloor.accessPoints || [],
             floorPlan: activeFloor.floorPlan || DEFAULT_FLOOR_PLAN,
-            pixelsPerMeter: activeFloor.pixelsPerMeter || 20,
+            pixelsPerMeter: normalizePixelsPerMeter(activeFloor.pixelsPerMeter),
             selectedAPId: null, selectedWallId: null,
             pendingWalls: null,
             suggestedAPs: null, suggestedAPOptions: null,
@@ -539,7 +560,7 @@ export const usePlannerStore = create<PlannerStore>()(
           // Legacy v1.0 / v1.1 — single floor
           const newAPs = Array.isArray(data.accessPoints) ? (data.accessPoints as AccessPoint[]) : [];
           const newWalls = Array.isArray(data.walls) ? (data.walls as Wall[]) : [];
-          const ppm = typeof data.pixelsPerMeter === 'number' ? data.pixelsPerMeter : 20;
+          const ppm = normalizePixelsPerMeter(data.pixelsPerMeter);
           const singleFloor: Floor = {
             id: DEFAULT_FLOOR_ID,
             name: '1F',
@@ -568,6 +589,7 @@ export const usePlannerStore = create<PlannerStore>()(
 
       loadScenario: (scenario) => {
         const state = get();
+        const safePpm = normalizePixelsPerMeter(scenario.pixelsPerMeter);
         const newWalls: Wall[] = scenario.walls.map(w => ({
           ...w, id: generateWallId(),
         }));
@@ -578,11 +600,11 @@ export const usePlannerStore = create<PlannerStore>()(
           imageData: null,
           width: scenario.floorPlan.width,
           height: scenario.floorPlan.height,
-          scale: 1 / scenario.pixelsPerMeter,
+          scale: 1 / safePpm,
         };
         const updatedFloors = state.floors.map(f =>
           f.id === state.activeFloorId
-            ? { ...f, walls: newWalls, accessPoints: newAPs, floorPlan: newFloorPlan, pixelsPerMeter: scenario.pixelsPerMeter }
+            ? { ...f, walls: newWalls, accessPoints: newAPs, floorPlan: newFloorPlan, pixelsPerMeter: safePpm }
             : f,
         );
         set({
@@ -590,7 +612,7 @@ export const usePlannerStore = create<PlannerStore>()(
           accessPoints: newAPs,
           walls: newWalls,
           floorPlan: newFloorPlan,
-          pixelsPerMeter: scenario.pixelsPerMeter,
+          pixelsPerMeter: safePpm,
           selectedAPId: null, selectedWallId: null,
           activeTool: 'select',
           canvasOffset: { x: 0, y: 0 },
@@ -671,6 +693,19 @@ export const usePlannerStore = create<PlannerStore>()(
     }),
     {
       name: 'wifi-planner-storage-v2',
+      merge: (persistedState, currentState) => {
+        const merged = { ...currentState, ...(persistedState as Partial<PlannerStore> | undefined) };
+        const floors = Array.isArray(merged.floors)
+          ? merged.floors.map(normalizeFloorPixelsPerMeter)
+          : [{ ...INITIAL_FLOOR }];
+        const activeFloor = floors.find(f => f.id === merged.activeFloorId) || floors[0];
+        return {
+          ...merged,
+          floors,
+          activeFloorId: activeFloor.id,
+          pixelsPerMeter: normalizePixelsPerMeter(merged.pixelsPerMeter ?? activeFloor.pixelsPerMeter),
+        };
+      },
       partialize: (state) => ({
         floors: syncCurrentFloor(state),
         activeFloorId: state.activeFloorId,

@@ -6,49 +6,42 @@ type Props = {
 };
 
 export function GridLayer({ width, height, pixelsPerMeter, zoom }: Props) {
-  // One grid cell = one metre in canvas units.  The SVG group's scale()
-  // transform handles visual sizing, so the cell count is always
-  //   floor(width / pixelsPerMeter) × floor(height / pixelsPerMeter)
-  // — independent of zoom level.
-  const gridSpacing = pixelsPerMeter;
-
+  const safeSpacing = Number.isFinite(pixelsPerMeter) && pixelsPerMeter > 0 ? pixelsPerMeter : 20;
+  const gridSpacing = Math.max(1, safeSpacing);
   const majorGridEvery = 5; // every 5 minor grids = major grid
+  const maxLinesPerAxis = 5000;
+  const verticalLineCount = Math.min(maxLinesPerAxis, Math.floor(width / gridSpacing));
+  const horizontalLineCount = Math.min(maxLinesPerAxis, Math.floor(height / gridSpacing));
   const lines: React.ReactNode[] = [];
 
   // Vertical lines
-  let x = 0;
-  let count = 0;
-  while (x <= width) {
+  for (let count = 0; count <= verticalLineCount; count++) {
+    const x = Math.min(width, count * gridSpacing);
     const isMajor = count % majorGridEvery === 0;
     lines.push(
       <line
-        key={`v${x}`}
+        key={`v${count}`}
         x1={x} y1={0}
         x2={x} y2={height}
         stroke={isMajor ? '#cbd5e1' : '#e2e8f0'}
         strokeWidth={isMajor ? 0.5 / zoom : 0.3 / zoom}
       />,
     );
-    x += gridSpacing;
-    count++;
   }
 
   // Horizontal lines
-  let y = 0;
-  count = 0;
-  while (y <= height) {
+  for (let count = 0; count <= horizontalLineCount; count++) {
+    const y = Math.min(height, count * gridSpacing);
     const isMajor = count % majorGridEvery === 0;
     lines.push(
       <line
-        key={`h${y}`}
+        key={`h${count}`}
         x1={0} y1={y}
         x2={width} y2={y}
         stroke={isMajor ? '#cbd5e1' : '#e2e8f0'}
         strokeWidth={isMajor ? 0.5 / zoom : 0.3 / zoom}
       />,
     );
-    y += gridSpacing;
-    count++;
   }
 
   return <g>{lines}</g>;
