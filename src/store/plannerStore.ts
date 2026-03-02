@@ -8,6 +8,7 @@ import type {
   Band,
   FloorPlan,
   Point,
+  Floor,
   ScenarioTemplate,
   DeploymentOptions,
 } from '../types';
@@ -24,8 +25,18 @@ const DEFAULT_FLOOR_PLAN: FloorPlan = {
   scale: 0.1,
 };
 
+const DEFAULT_FLOOR_ID = 'floor-1';
+const INITIAL_FLOOR: Floor = {
+  id: DEFAULT_FLOOR_ID,
+  name: '1F',
+  walls: [],
+  accessPoints: [],
+  floorPlan: DEFAULT_FLOOR_PLAN,
+  pixelsPerMeter: 20,
+};
+
 const MAX_HISTORY = 50;
-const SUPPORTED_PLAN_VERSIONS = ['1.0', '1.1'];
+const SUPPORTED_PLAN_VERSIONS = ['1.0', '1.1', '1.2'];
 
 type HistorySnapshot = {
   accessPoints: AccessPoint[];
@@ -34,6 +45,8 @@ type HistorySnapshot = {
 
 type PlannerStore = {
   // ── Persistent state ──────────────────────────────────────────────────────
+  floors: Floor[];
+  activeFloorId: string;
   accessPoints: AccessPoint[];
   walls: Wall[];
   floorPlan: FloorPlan;
@@ -54,6 +67,13 @@ type PlannerStore = {
   pendingWalls: Wall[] | null;
   suggestedAPs: Array<{ x: number; y: number }> | null;
   suggestedAPOptions: DeploymentOptions | null;
+
+  // ── Floor management ──────────────────────────────────────────────────────
+  addFloor: () => void;
+  deleteFloor: (id: string) => void;
+  renameFloor: (id: string, name: string) => void;
+  switchFloor: (id: string) => void;
+  moveFloor: (id: string, direction: 'up' | 'down') => void;
 
   // ── Actions ───────────────────────────────────────────────────────────────
   addAccessPoint: (x: number, y: number) => void;
@@ -108,6 +128,7 @@ type PlannerStore = {
 
 let apCounter = 1;
 let wallCounter = 1;
+let floorCounter = 2;
 
 function generateAPId(): string {
   return `ap-${Date.now()}-${apCounter++}`;
@@ -115,6 +136,10 @@ function generateAPId(): string {
 
 function generateWallId(): string {
   return `wall-${Date.now()}-${wallCounter++}`;
+}
+
+function generateFloorId(): string {
+  return `floor-${Date.now()}-${floorCounter++}`;
 }
 
 function getNextAPColor(existingAPs: AccessPoint[]): string {
@@ -136,12 +161,29 @@ function pushHistory(
   return { _history: next, _historyIndex: next.length - 1 };
 }
 
+// Sync working state into the active floor (strips imageData to save space)
+function syncCurrentFloor(state: PlannerStore): Floor[] {
+  return state.floors.map(f =>
+    f.id === state.activeFloorId
+      ? {
+          ...f,
+          walls: state.walls,
+          accessPoints: state.accessPoints,
+          floorPlan: { ...state.floorPlan, imageData: null },
+          pixelsPerMeter: state.pixelsPerMeter,
+        }
+      : f,
+  );
+}
+
 const INITIAL_HISTORY: HistorySnapshot[] = [{ accessPoints: [], walls: [] }];
 
 export const usePlannerStore = create<PlannerStore>()(
   persist(
     (set, get) => ({
       // ── Initial state ───────────────────────────────────────────────────────
+      floors: [{ ...INITIAL_FLOOR }],
+      activeFloorId: DEFAULT_FLOOR_ID,
       accessPoints: [],
       walls: [],
       floorPlan: DEFAULT_FLOOR_PLAN,
@@ -160,6 +202,102 @@ export const usePlannerStore = create<PlannerStore>()(
       pendingWalls: null,
       suggestedAPs: null,
       suggestedAPOptions: null,
+
+      // ── Floor management ────────────────────────────────────────────────────
+
+      addFloor: () => {
+        const state = get();
+        const synced = syncCurrentFloor(state);
+        const id = generateFloorId();
+        const count = state.floors.length;
+        const newFloor: Floor = {
+          id,
+          name: `${count + 1}F`,
+          walls: [],
+          accessPoints: [],
+          floorPlan: { ...DEFAULT_FLOOR_PLAN },
+          pixelsPerMeter: state.pixelsPerMeter,
+        };
+        set({
+          floors: [...synced, newFloor],
+          activeFloorId: id,
+          walls: [],
+          accessPoints: [],
+          floorPlan: { ...DEFAULT_FLOOR_PLAN },
+          pixelsPerMeter: state.pixelsPerMeter,
+          selectedAPId: null, selectedWallId: null,
+          pendingWalls: null, suggestedAPs: null, suggestedAPOptions: null,
+          canvasOffset: { x: 0, y: 0 }, canvasZoom: 1,
+          _history: INITIAL_HISTORY,
+          _historyIndex: 0,
+        });
+      },
+
+      deleteFloor: (id) => {
+        const state = get();
+        if (state.floors.length <= 1) return;
+
+        if (id === state.activeFloorId) {
+          const remaining = state.floors.filter(f => f.id !== id);
+          const idx = state.floors.findIndex(f => f.id === id);
+          const newActive = remaining[Math.max(0, idx - 1)];
+          set({
+            floors: remaining,
+            activeFloorId: newActive.id,
+            walls: newActive.walls,
+            accessPoints: newActive.accessPoints,
+            floorPlan: newActive.floorPlan,
+            pixelsPerMeter: newActive.pixelsPerMeter,
+            selectedAPId: null, selectedWallId: null,
+            pendingWalls: null, suggestedAPs: null, suggestedAPOptions: null,
+            _history: [{ accessPoints: newActive.accessPoints, walls: newActive.walls }],
+            _historyIndex: 0,
+          });
+        } else {
+          const synced = syncCurrentFloor(state);
+          set({ floors: synced.filter(f => f.id !== id) });
+        }
+      },
+
+      renameFloor: (id, name) => {
+        set(state => ({
+          floors: state.floors.map(f => f.id === id ? { ...f, name } : f),
+        }));
+      },
+
+      switchFloor: (id) => {
+        const state = get();
+        if (id === state.activeFloorId) return;
+        const synced = syncCurrentFloor(state);
+        const newFloor = synced.find(f => f.id === id)!;
+        set({
+          floors: synced,
+          activeFloorId: id,
+          walls: newFloor.walls,
+          accessPoints: newFloor.accessPoints,
+          floorPlan: newFloor.floorPlan,
+          pixelsPerMeter: newFloor.pixelsPerMeter,
+          selectedAPId: null, selectedWallId: null,
+          pendingWalls: null, suggestedAPs: null, suggestedAPOptions: null,
+          _history: [{ accessPoints: newFloor.accessPoints, walls: newFloor.walls }],
+          _historyIndex: 0,
+        });
+      },
+
+      moveFloor: (id, direction) => {
+        const state = get();
+        const synced = syncCurrentFloor(state);
+        const idx = synced.findIndex(f => f.id === id);
+        if (direction === 'up' && idx > 0) {
+          const arr = [...synced];
+          [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+          set({ floors: arr });
+        } else if (direction === 'down' && idx < synced.length - 1) {
+          const arr = [...synced];
+          [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+          set({ floors: arr });
+        }
+      },
 
       // ── AP actions ──────────────────────────────────────────────────────────
 
@@ -305,9 +443,13 @@ export const usePlannerStore = create<PlannerStore>()(
       // ── Bulk operations ─────────────────────────────────────────────────────
 
       clearAll: () => {
+        const emptyFloor: Floor = { ...INITIAL_FLOOR };
         set({
+          floors: [emptyFloor],
+          activeFloorId: DEFAULT_FLOOR_ID,
           accessPoints: [], walls: [],
           floorPlan: DEFAULT_FLOOR_PLAN,
+          pixelsPerMeter: 20,
           selectedAPId: null, selectedWallId: null,
           activeTool: 'select',
           pendingWalls: null,
@@ -318,13 +460,12 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       exportPlan: () => {
-        const { accessPoints, walls, floorPlan, pixelsPerMeter } = get();
+        const state = get();
+        const synced = syncCurrentFloor(state);
         return JSON.stringify({
-          version: '1.1',
-          accessPoints,
-          walls,
-          floorPlan: { ...floorPlan, imageData: null },
-          pixelsPerMeter,
+          version: '1.2',
+          floors: synced,
+          activeFloorId: state.activeFloorId,
           exportedAt: new Date().toISOString(),
         }, null, 2);
       },
@@ -348,39 +489,82 @@ export const usePlannerStore = create<PlannerStore>()(
           return;
         }
 
-        const newAPs = Array.isArray(data.accessPoints) ? (data.accessPoints as AccessPoint[]) : [];
-        const newWalls = Array.isArray(data.walls) ? (data.walls as Wall[]) : [];
-
-        set({
-          accessPoints: newAPs,
-          walls: newWalls,
-          pixelsPerMeter: typeof data.pixelsPerMeter === 'number' ? data.pixelsPerMeter : 20,
-          selectedAPId: null, selectedWallId: null,
-          pendingWalls: null,
-          suggestedAPs: null, suggestedAPOptions: null,
-          _history: [{ accessPoints: newAPs, walls: newWalls }],
-          _historyIndex: 0,
-        });
+        if (version === '1.2') {
+          const floors = (data.floors as Floor[]) || [];
+          if (floors.length === 0) {
+            alert('No floor data found in this file.');
+            return;
+          }
+          const activeFloorId = (data.activeFloorId as string) || floors[0].id;
+          const activeFloor = floors.find(f => f.id === activeFloorId) || floors[0];
+          set({
+            floors,
+            activeFloorId: activeFloor.id,
+            walls: activeFloor.walls || [],
+            accessPoints: activeFloor.accessPoints || [],
+            floorPlan: activeFloor.floorPlan || DEFAULT_FLOOR_PLAN,
+            pixelsPerMeter: activeFloor.pixelsPerMeter || 20,
+            selectedAPId: null, selectedWallId: null,
+            pendingWalls: null,
+            suggestedAPs: null, suggestedAPOptions: null,
+            _history: [{ accessPoints: activeFloor.accessPoints || [], walls: activeFloor.walls || [] }],
+            _historyIndex: 0,
+          });
+        } else {
+          // Legacy v1.0 / v1.1 — single floor
+          const newAPs = Array.isArray(data.accessPoints) ? (data.accessPoints as AccessPoint[]) : [];
+          const newWalls = Array.isArray(data.walls) ? (data.walls as Wall[]) : [];
+          const ppm = typeof data.pixelsPerMeter === 'number' ? data.pixelsPerMeter : 20;
+          const singleFloor: Floor = {
+            id: DEFAULT_FLOOR_ID,
+            name: '1F',
+            walls: newWalls,
+            accessPoints: newAPs,
+            floorPlan: DEFAULT_FLOOR_PLAN,
+            pixelsPerMeter: ppm,
+          };
+          set({
+            floors: [singleFloor],
+            activeFloorId: DEFAULT_FLOOR_ID,
+            accessPoints: newAPs,
+            walls: newWalls,
+            floorPlan: DEFAULT_FLOOR_PLAN,
+            pixelsPerMeter: ppm,
+            selectedAPId: null, selectedWallId: null,
+            pendingWalls: null,
+            suggestedAPs: null, suggestedAPOptions: null,
+            _history: [{ accessPoints: newAPs, walls: newWalls }],
+            _historyIndex: 0,
+          });
+        }
       },
 
       // ── Scenario loading ────────────────────────────────────────────────────
 
       loadScenario: (scenario) => {
+        const state = get();
         const newWalls: Wall[] = scenario.walls.map(w => ({
           ...w, id: generateWallId(),
         }));
         const newAPs: AccessPoint[] = scenario.accessPoints.map(ap => ({
           ...ap, id: generateAPId(),
         }));
+        const newFloorPlan: FloorPlan = {
+          imageData: null,
+          width: scenario.floorPlan.width,
+          height: scenario.floorPlan.height,
+          scale: 1 / scenario.pixelsPerMeter,
+        };
+        const updatedFloors = state.floors.map(f =>
+          f.id === state.activeFloorId
+            ? { ...f, walls: newWalls, accessPoints: newAPs, floorPlan: newFloorPlan, pixelsPerMeter: scenario.pixelsPerMeter }
+            : f,
+        );
         set({
+          floors: updatedFloors,
           accessPoints: newAPs,
           walls: newWalls,
-          floorPlan: {
-            imageData: null,
-            width: scenario.floorPlan.width,
-            height: scenario.floorPlan.height,
-            scale: 1 / scenario.pixelsPerMeter,
-          },
+          floorPlan: newFloorPlan,
           pixelsPerMeter: scenario.pixelsPerMeter,
           selectedAPId: null, selectedWallId: null,
           activeTool: 'select',
@@ -461,10 +645,13 @@ export const usePlannerStore = create<PlannerStore>()(
       clearSuggestedAPs: () => set({ suggestedAPs: null, suggestedAPOptions: null }),
     }),
     {
-      name: 'wifi-planner-storage',
+      name: 'wifi-planner-storage-v2',
       partialize: (state) => ({
-        accessPoints: state.accessPoints,
+        floors: syncCurrentFloor(state),
+        activeFloorId: state.activeFloorId,
+        // Also persist active floor's working state for immediate hydration
         walls: state.walls,
+        accessPoints: state.accessPoints,
         pixelsPerMeter: state.pixelsPerMeter,
         showHeatmap: state.showHeatmap,
         heatmapBand: state.heatmapBand,

@@ -208,9 +208,12 @@ describe('plannerStore - export/import', () => {
     usePlannerStore.getState().addWall(0, 0, 200, 200);
     const json = usePlannerStore.getState().exportPlan();
     const parsed = JSON.parse(json);
-    expect(parsed.accessPoints).toHaveLength(1);
-    expect(parsed.walls).toHaveLength(1);
-    expect(parsed.version).toBe('1.1');
+    expect(parsed.version).toBe('1.2');
+    expect(parsed.floors).toBeInstanceOf(Array);
+    expect(parsed.floors.length).toBeGreaterThan(0);
+    const activeFloor = parsed.floors.find((f: { id: string }) => f.id === parsed.activeFloorId);
+    expect(activeFloor.accessPoints).toHaveLength(1);
+    expect(activeFloor.walls).toHaveLength(1);
   });
 
   it('imports plan from JSON', () => {

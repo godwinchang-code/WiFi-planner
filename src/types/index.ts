@@ -105,6 +105,17 @@ export type PlannerState = {
   canvasZoom: number;
 };
 
+// ─── Multi-Floor ─────────────────────────────────────────────────────────────
+
+export type Floor = {
+  id: string;
+  name: string;
+  walls: Wall[];
+  accessPoints: AccessPoint[];
+  floorPlan: FloorPlan;
+  pixelsPerMeter: number;
+};
+
 // ─── Scenario Templates ───────────────────────────────────────────────────────
 
 export type ScenarioTemplate = {
