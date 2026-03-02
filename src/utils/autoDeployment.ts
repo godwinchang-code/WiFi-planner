@@ -8,7 +8,7 @@
  *      covers at ≥ targetRSSI using the existing JS signal model.
  *   4. Greedy loop: repeatedly pick the candidate that covers the
  *      most currently-uncovered samples, subject to a minimum
- *      separation constraint from already-placed APs.
+ *      separation constraint from ALL APs (existing + already placed).
  *   5. Stop when targetCoveragePct is reached or maxAPs is placed.
  *
  * Uses the pure-JS signal simulation path (no WASM) so it can run
@@ -72,17 +72,22 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
  * Main entry point: compute optimal AP placement using a greedy
  * set-cover algorithm.
  *
- * @param floorPlan   Canvas dimensions in pixels
- * @param walls       Existing walls (used for signal attenuation)
- * @param pixelsPerMeter  Scale factor
- * @param options     Deployment parameters
- * @returns           Suggested AP positions + coverage statistics
+ * @param floorPlan      Canvas dimensions in pixels
+ * @param walls          Existing walls (used for signal attenuation)
+ * @param pixelsPerMeter Scale factor
+ * @param options        Deployment parameters
+ * @param existingAPs    APs already on the plan — their positions are treated
+ *                       as occupied and respected by the minimum-separation
+ *                       constraint so newly suggested APs never land too close
+ *                       to an AP that already exists.
+ * @returns              Suggested AP positions + coverage statistics
  */
 export function computeAutoDeployment(
   floorPlan: { width: number; height: number },
   walls: Wall[],
   pixelsPerMeter: number,
   options: DeploymentOptions,
+  existingAPs: Array<{ x: number; y: number }> = [],
 ): DeploymentResult {
   const { width, height } = floorPlan;
   const {
@@ -93,7 +98,7 @@ export function computeAutoDeployment(
 
   const minSepPx = minSeparationM * pixelsPerMeter;
 
-  // ── Step 1: evaluation sample grid (every ~40 px or 2 m, whichever is coarser)
+  // ── Step 1: evaluation sample grid (every ~2 m)
   const evalStep = Math.max(20, Math.round(2 * pixelsPerMeter));
   const samplePoints: Array<{ x: number; y: number }> = [];
 
@@ -128,6 +133,10 @@ export function computeAutoDeployment(
   const placed: Array<{ x: number; y: number }> = [];
   const usedCandIdx = new Set<number>();
 
+  // All occupied positions: existing APs seed the separation check from the
+  // very first iteration, so new suggestions cannot cluster around them.
+  const occupied: Array<{ x: number; y: number }> = [...existingAPs];
+
   while (placed.length < maxAPs && uncovered.size > 0) {
     let bestIdx = -1;
     let bestGain = 0;
@@ -135,8 +144,9 @@ export function computeAutoDeployment(
     for (let i = 0; i < candidates.length; i++) {
       if (usedCandIdx.has(i)) continue;
 
-      // Enforce minimum separation from already-placed APs
-      const tooClose = placed.some(p =>
+      // Enforce minimum separation from ALL occupied positions
+      // (existing APs on the plan + APs placed in this run).
+      const tooClose = occupied.some(p =>
         dist(candidates[i].x, candidates[i].y, p.x, p.y) < minSepPx,
       );
       if (tooClose) continue;
@@ -156,7 +166,9 @@ export function computeAutoDeployment(
     // No candidate improves coverage (all blocked by separation or zero gain)
     if (bestIdx === -1 || bestGain === 0) break;
 
-    placed.push({ x: candidates[bestIdx].x, y: candidates[bestIdx].y });
+    const chosen = candidates[bestIdx];
+    placed.push({ x: chosen.x, y: chosen.y });
+    occupied.push({ x: chosen.x, y: chosen.y }); // register for future iterations
     usedCandIdx.add(bestIdx);
 
     // Remove covered samples

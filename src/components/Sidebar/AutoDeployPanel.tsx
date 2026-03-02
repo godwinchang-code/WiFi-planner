@@ -4,25 +4,31 @@ import { usePlannerStore } from '../../store/plannerStore';
 import { computeAutoDeployment } from '../../utils/autoDeployment';
 import type { Band, DeploymentOptions } from '../../types';
 
-const TARGET_RSSI_OPTIONS = [
+const RSSI_PRESETS = [
   { label: '极好 -60 dBm', value: -60 },
   { label: '良好 -65 dBm', value: -65 },
   { label: '一般 -70 dBm', value: -70 },
+  { label: '自定义 / Custom', value: 'custom' as const },
 ];
 
 export function AutoDeployPanel() {
   const {
     floorPlan, walls, pixelsPerMeter,
+    accessPoints,
     suggestedAPs, suggestedAPOptions,
     setSuggestedAPs, applySuggestedAPs, clearSuggestedAPs,
   } = usePlannerStore();
 
   const [band, setBand] = useState<Band>('2.4GHz');
-  const [targetRSSI, setTargetRSSI] = useState(-65);
+  // 'custom' means the user has selected the free-input option
+  const [rssiPreset, setRssiPreset] = useState<number | 'custom'>(-65);
+  const [customRSSI, setCustomRSSI] = useState(-65);
   const [minSepM, setMinSepM] = useState(8);
   const [maxAPs, setMaxAPs] = useState(6);
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState<{ pct: number; count: number } | null>(null);
+
+  const targetRSSI = rssiPreset === 'custom' ? customRSSI : rssiPreset;
 
   const handleCalculate = useCallback(() => {
     setRunning(true);
@@ -37,7 +43,8 @@ export function AutoDeployPanel() {
         targetCoveragePct: 0.9,
         maxAPs,
       };
-      const result = computeAutoDeployment(floorPlan, walls, pixelsPerMeter, opts);
+      // Pass existing APs so the separation check includes them
+      const result = computeAutoDeployment(floorPlan, walls, pixelsPerMeter, opts, accessPoints);
       setSuggestedAPs(result.positions, opts);
       setLastResult({
         pct: Math.round(result.achievedCoveragePct * 100),
@@ -45,7 +52,7 @@ export function AutoDeployPanel() {
       });
       setRunning(false);
     }, 20);
-  }, [band, targetRSSI, minSepM, maxAPs, floorPlan, walls, pixelsPerMeter, setSuggestedAPs]);
+  }, [band, targetRSSI, minSepM, maxAPs, floorPlan, walls, pixelsPerMeter, accessPoints, setSuggestedAPs]);
 
   const handleApply = useCallback(() => {
     applySuggestedAPs();
@@ -86,18 +93,35 @@ export function AutoDeployPanel() {
           </div>
         </div>
 
-        {/* Target RSSI */}
+        {/* Target RSSI — preset selector + optional custom input */}
         <div>
           <label className="text-xs text-gray-500 font-medium">目标信号 / Target RSSI</label>
           <select
-            value={targetRSSI}
-            onChange={e => setTargetRSSI(Number(e.target.value))}
+            value={rssiPreset}
+            onChange={e => {
+              const v = e.target.value;
+              setRssiPreset(v === 'custom' ? 'custom' : Number(v));
+            }}
             className="mt-1 w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-primary-500"
           >
-            {TARGET_RSSI_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+            {RSSI_PRESETS.map(o => (
+              <option key={String(o.value)} value={o.value}>{o.label}</option>
             ))}
           </select>
+
+          {/* Custom RSSI input — only shown when "custom" is selected */}
+          {rssiPreset === 'custom' && (
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="number"
+                min={-100} max={-30} step={1}
+                value={customRSSI}
+                onChange={e => setCustomRSSI(Number(e.target.value))}
+                className="w-24 text-xs border border-gray-300 rounded px-2 py-1 focus:ring-1 focus:ring-primary-500"
+              />
+              <span className="text-xs text-gray-400">dBm（-100 ~ -30）</span>
+            </div>
+          )}
         </div>
 
         {/* Min separation and max APs */}
