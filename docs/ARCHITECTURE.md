@@ -223,3 +223,76 @@ using the pre-built binary.
 | Styling | Tailwind CSS | Utility classes; no CSS module naming overhead |
 | Tests (TS) | Vitest | Same config as Vite; fast; compatible with jsdom |
 | Tests (Rust) | cargo test | Native target; zero WASM overhead for unit tests |
+| Web server | Rust / axum | Same language as WASM engine; async; single binary deployment via rust-embed |
+
+---
+
+## Web Server Architecture
+
+The `server/` crate is a standalone Rust binary that:
+
+1. **Embeds `dist/`** at compile time via `rust-embed` — no files needed at runtime
+2. **Serves the SPA** with a fallback to `index.html` for client-side routing
+3. **Hosts a versioned REST API** at `/api/v1/` for current and future backend features
+4. **Supports HTTP and HTTPS** — plain TCP by default, rustls TLS when cert/key are provided
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  wifi-planner-server binary                                       │
+│                                                                   │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │  axum Router                                             │    │
+│  │                                                          │    │
+│  │  /api/v1/*  ──► api::router(AppState)                    │    │
+│  │                   GET /health → HealthResponse (JSON)    │    │
+│  │                   (future: /plans, /settings, …)         │    │
+│  │                                                          │    │
+│  │  /*  ──────────► static_handler(Uri)                     │    │
+│  │                   Assets::get(path) → embedded bytes     │    │
+│  │                   fallback: serve index.html (SPA)       │    │
+│  │                                                          │    │
+│  │  Middleware stack (tower-http):                          │    │
+│  │    CompressionLayer  (gzip / brotli)                     │    │
+│  │    CorsLayer         (permissive, tighten in prod)       │    │
+│  │    TraceLayer        (per-request structured logs)       │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│                                                                   │
+│  ┌────────────────────┐    ┌───────────────────────────────┐     │
+│  │  axum-server       │    │  rust-embed                   │     │
+│  │  HTTP  (default)   │    │  dist/ baked in at build time │     │
+│  │  HTTPS (rustls TLS)│    │  ~served from binary memory~  │     │
+│  └────────────────────┘    └───────────────────────────────┘     │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Build dependency
+
+```
+npm run build          →  dist/  (frontend assets)
+         │
+         ▼
+cargo build --release  →  wifi-planner-server  (embeds dist/)
+         │
+         ▼
+./wifi-planner-server  →  http://0.0.0.0:8080  (ready, no other deps)
+```
+
+The `server/build.rs` script verifies `dist/` exists at cargo build time and
+emits `cargo:rerun-if-changed=../dist` so the binary is rebuilt whenever the
+frontend is rebuilt.
+
+### AppState and extensibility
+
+`AppState` is an `Arc<T>` injected into every handler via `axum::extract::State`.
+Adding new backend features (database pool, broadcast channel, feature flags) is
+a matter of extending `state.rs` — the router and handler signatures remain
+unchanged for existing routes.
+
+```rust
+// state.rs — future extension example
+pub struct AppState {
+    pub config:      Config,
+    pub db:          sqlx::SqlitePool,      // plan persistence
+    pub broadcast:   broadcast::Sender<Event>,  // live collaboration
+}
+```

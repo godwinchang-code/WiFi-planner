@@ -1,0 +1,53 @@
+[package]
+name        = "wifi-planner-server"
+version     = "0.1.0"
+edition     = "2021"
+description = "WiFi Planner — self-contained HTTP/HTTPS server that embeds the SPA and exposes a REST API"
+license     = "MIT"
+
+[[bin]]
+name = "wifi-planner-server"
+path = "src/main.rs"
+
+# ─── Runtime ──────────────────────────────────────────────────────────────────
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP framework
+axum = { version = "0.8", features = ["macros"] }
+
+# HTTP/HTTPS server (wraps hyper; adds TLS support)
+axum-server = { version = "0.8", features = ["tls-rustls"] }
+
+# Middleware: gzip+brotli compression, CORS, request tracing
+tower-http = { version = "0.6", features = [
+    "compression-gzip",
+    "compression-br",
+    "cors",
+    "trace",
+] }
+
+# CLI + env-var configuration
+clap = { version = "4", features = ["derive", "env"] }
+
+# Serialisation
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Structured logging
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Embed dist/ at compile time → single self-contained binary
+rust-embed = "8"
+
+# MIME type detection for embedded assets
+mime_guess = "2"
+
+# ─── Build profile ────────────────────────────────────────────────────────────
+[profile.release]
+opt-level     = 3
+lto           = true
+codegen-units = 1
+strip         = true     # strip debug symbols → smaller binary

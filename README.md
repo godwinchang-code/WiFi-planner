@@ -17,9 +17,14 @@ A browser-based WiFi network coverage planning tool. Place access points on a fl
 | **AP configuration** | Name, band, channel, TX power (0–33 dBm), antenna gain |
 | **Floor plan upload** | PNG / JPG / SVG background image |
 | **Coverage statistics** | Per-tier breakdown (Excellent / Good / Fair / Poor) + avg RSSI |
-| **Export / Import** | Save and restore plans as JSON |
+| **Built-in scenarios** | One-click residential + SMB floor plan templates |
+| **Wall auto-detection** | Sobel edge detection extracts walls from uploaded images |
+| **AP auto-deployment** | Greedy set-cover algorithm places APs for target coverage |
+| **Multi-floor support** | Independent walls / APs / floor plan per floor with tab UI |
+| **Export / Import** | Save and restore plans as JSON (v1.2 format with floors) |
 | **Pan & Zoom** | Scroll to zoom, middle-click drag to pan |
 | **Persistent state** | Plan auto-saved to `localStorage` |
+| **Built-in web server** | Self-contained Rust HTTP/HTTPS server — no Node.js needed after build |
 
 ---
 
@@ -39,7 +44,7 @@ A browser-based WiFi network coverage planning tool. Place access points on a fl
 | Tool | Version | Purpose |
 |------|---------|---------|
 | **Node.js** | ≥ 18 | JavaScript runtime + npm |
-| **Rust** | ≥ 1.70 (stable) | Compile the WASM engine |
+| **Rust** | ≥ 1.70 (stable) | Compile the WASM engine **and** the web server |
 | **wasm-pack** | ≥ 0.12 | Build Rust → WebAssembly |
 
 ### Install Rust
@@ -98,11 +103,69 @@ The WASM engine is loaded automatically when the browser tab opens. A green
 
 ```bash
 npm run build        # compiles WASM + TypeScript, then bundles with Vite
-npm run preview      # serve the dist/ folder locally
+npm run preview      # serve the dist/ folder locally (Node.js, dev only)
 ```
 
 Output is written to `dist/`. The `.wasm` file is included as a hashed asset
 by `vite-plugin-wasm` and served with the correct `application/wasm` MIME type.
+
+---
+
+## Built-in Web Server
+
+After building the frontend, compile the self-contained Rust server which
+**embeds `dist/` at compile time** — the result is a single binary with no
+runtime dependencies (no Node.js, no nginx, no `dist/` folder needed alongside).
+
+```bash
+# 1. Build frontend → dist/
+npm run build
+
+# 2. Compile server (embeds dist/ into the binary)
+npm run build:server
+#    equivalent: cargo build --release --manifest-path server/Cargo.toml
+
+# — or do both in one command —
+npm run build:all
+```
+
+### Running the server
+
+```bash
+# Default: HTTP on 0.0.0.0:8080
+./server/target/release/wifi-planner-server
+
+# Custom host / port
+./server/target/release/wifi-planner-server --host 127.0.0.1 --port 3000
+
+# HTTPS with a PEM certificate and key
+./server/target/release/wifi-planner-server \
+  --tls-cert cert.pem --tls-key key.pem --tls-port 443
+
+# Verbose logging
+./server/target/release/wifi-planner-server --log-level debug
+```
+
+All options can also be set via environment variables:
+
+| Env var | CLI flag | Default |
+|---------|----------|---------|
+| `WIFI_PLANNER_HOST` | `--host` | `0.0.0.0` |
+| `WIFI_PLANNER_PORT` | `--port` | `8080` |
+| `WIFI_PLANNER_TLS_PORT` | `--tls-port` | `8443` |
+| `WIFI_PLANNER_TLS_CERT` | `--tls-cert` | — |
+| `WIFI_PLANNER_TLS_KEY` | `--tls-key` | — |
+| `WIFI_PLANNER_LOG` | `--log-level` | `info` |
+
+### REST API
+
+The server exposes a versioned API at `/api/v1/`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/health` | Health / readiness check |
+
+More endpoints (plan storage, settings) will be added in future iterations.
 
 ---
 
@@ -139,49 +202,57 @@ Current totals: **77 tests, all passing**.
 WiFi-planner/
 ├── wasm-engine/                   # Rust crate → WebAssembly
 │   ├── Cargo.toml
-│   └── src/lib.rs                 # Propagation engine + 21 unit tests
+│   └── src/lib.rs                 # Propagation engine + unit tests
 │
-├── src/
+├── server/                        # Rust crate → self-contained web server
+│   ├── Cargo.toml
+│   ├── build.rs                   # Checks dist/ exists before embedding
+│   └── src/
+│       ├── main.rs                # Entry point: CLI → router → axum-server
+│       ├── config.rs              # clap CLI + env-var configuration
+│       ├── state.rs               # AppState (Arc'd, extensible)
+│       └── api/
+│           ├── mod.rs             # /api/v1 router
+│           └── health.rs          # GET /api/v1/health
+│
+├── src/                           # React / TypeScript frontend
 │   ├── main.tsx                   # App entry – mounts WasmProvider
 │   ├── App.tsx
-│   │
 │   ├── wasm/
 │   │   ├── engine.ts              # TypeScript wrapper around WASM functions
 │   │   └── pkg/                   # wasm-pack output (committed)
-│   │       ├── wifi_planner_wasm_bg.wasm
-│   │       ├── wifi_planner_wasm_bg.js
-│   │       └── wifi_planner_wasm.d.ts
-│   │
 │   ├── context/
 │   │   └── WasmContext.tsx        # React context – auto-loads WASM on mount
-│   │
 │   ├── store/
-│   │   └── plannerStore.ts        # Zustand store (APs, walls, settings)
-│   │
+│   │   └── plannerStore.ts        # Zustand store (floors, APs, walls, …)
 │   ├── hooks/
 │   │   ├── useHeatmap.ts          # Canvas heatmap (WASM → JS fallback)
 │   │   └── useCanvasPan.ts        # Pan/zoom interactions
-│   │
+│   ├── data/
+│   │   └── scenarios.ts           # Built-in floor plan templates
 │   ├── components/
 │   │   ├── Canvas/
 │   │   │   ├── PlannerCanvas.tsx  # Main SVG canvas + event handling
-│   │   │   ├── HeatmapLayer.tsx   # Canvas overlay for heatmap
+│   │   │   ├── FloorTabs.tsx      # Multi-floor tab bar
+│   │   │   ├── HeatmapLayer.tsx
 │   │   │   ├── AccessPointMarker.tsx
 │   │   │   ├── WallLayer.tsx
 │   │   │   └── GridLayer.tsx
 │   │   └── Sidebar/
 │   │       ├── Sidebar.tsx
-│   │       ├── Toolbar.tsx        # Tool selector
-│   │       ├── APPanel.tsx        # AP list + configuration
+│   │       ├── ScenarioPanel.tsx  # Scenario selection
+│   │       ├── AutoDeployPanel.tsx # AP auto-deployment
+│   │       ├── Toolbar.tsx
+│   │       ├── APPanel.tsx
 │   │       ├── HeatmapSettings.tsx
 │   │       ├── FloorPlanSettings.tsx
 │   │       ├── ExportPanel.tsx
-│   │       └── WasmBadge.tsx      # Engine status indicator
-│   │
+│   │       └── WasmBadge.tsx
 │   ├── utils/
 │   │   ├── signalSimulation.ts    # JS fallback propagation engine
-│   │   └── geometry.ts            # Point/line helpers
-│   │
+│   │   ├── wallDetection.ts       # Sobel edge detection
+│   │   ├── autoDeployment.ts      # Greedy set-cover AP placement
+│   │   └── geometry.ts
 │   ├── types/index.ts             # Shared TypeScript types
 │   └── test/                      # Vitest test suite
 │
