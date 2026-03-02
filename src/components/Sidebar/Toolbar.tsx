@@ -1,4 +1,4 @@
-import { MousePointer, Wifi, Minus, Eraser } from 'lucide-react';
+import { MousePointer, Wifi, Minus, Eraser, Ruler, Radio } from 'lucide-react';
 import { usePlannerStore } from '../../store/plannerStore';
 import type { Tool, WallType } from '../../types';
 import { WALL_CONFIGS } from '../../types';
@@ -8,6 +8,8 @@ const TOOLS: { id: Tool; label: string; icon: React.ReactNode; shortcut: string 
   { id: 'ap', label: 'Place Access Point', icon: <Wifi size={18} />, shortcut: '2' },
   { id: 'wall', label: 'Draw Wall', icon: <Minus size={18} />, shortcut: '3' },
   { id: 'erase', label: 'Erase', icon: <Eraser size={18} />, shortcut: '4' },
+  { id: 'measure', label: '测距', icon: <Ruler size={18} />, shortcut: '5' },
+  { id: 'station', label: '模拟 Station', icon: <Radio size={18} />, shortcut: '6' },
 ];
 
 const WALL_TYPES: WallType[] = ['light', 'glass', 'concrete', 'exterior'];

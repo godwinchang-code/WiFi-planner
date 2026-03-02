@@ -82,7 +82,7 @@ export const AP_MODELS: APModel[] = [
   { name: 'Outdoor AP', txPower: 33, gain: 8, bands: ['2.4GHz', '5GHz'] },
 ];
 
-export type Tool = 'select' | 'ap' | 'wall' | 'erase';
+export type Tool = 'select' | 'ap' | 'wall' | 'erase' | 'measure' | 'station';
 
 export type FloorPlan = {
   imageData: string | null;

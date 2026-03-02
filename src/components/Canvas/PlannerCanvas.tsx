@@ -5,6 +5,7 @@ import { AccessPointMarker } from './AccessPointMarker';
 import { WallLayer } from './WallLayer';
 import { GridLayer } from './GridLayer';
 import { screenToCanvas } from '../../utils/geometry';
+import { calculateRSSI, getSignalQuality, getSignalQualityColor } from '../../utils/signalSimulation';
 import type { CoverageStats } from '../../utils/signalSimulation';
 
 type Props = {
@@ -31,6 +32,14 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const lastPanPoint = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Measure tool state
+  const [measureStart, setMeasureStart] = useState<{ x: number; y: number } | null>(null);
+  const [measureLine, setMeasureLine] = useState<{ start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
+
+  // Station tool state
+  const [stationPoint, setStationPoint] = useState<{ x: number; y: number } | null>(null);
+  const stationDragging = useRef(false);
 
   // Refs that always hold the latest zoom/offset values.
   // The wheel event fires many times per frame on trackpads; if the handler
@@ -109,10 +118,31 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
       // Deselect on empty click
       selectAP(null);
       selectWall(null);
+    } else if (activeTool === 'measure') {
+      if (!measureStart) {
+        setMeasureStart(pt);
+        setMeasureLine(null);
+      } else {
+        setMeasureLine({ start: measureStart, end: pt });
+        setMeasureStart(null);
+      }
+    } else if (activeTool === 'station') {
+      if (stationPoint) {
+        const distCanvas = Math.sqrt((pt.x - stationPoint.x) ** 2 + (pt.y - stationPoint.y) ** 2);
+        const distScreen = distCanvas * canvasZoom;
+        if (distScreen < 20) {
+          stationDragging.current = true;
+        } else {
+          setStationPoint(pt);
+        }
+      } else {
+        setStationPoint(pt);
+      }
     }
   }, [
     activeTool, wallStart, width, height,
-    accessPoints, walls,
+    accessPoints, walls, canvasZoom,
+    measureStart, stationPoint,
     getCanvasPoint, addAccessPoint, addWall,
     removeAccessPoint, removeWall, selectAP, selectWall,
   ]);
@@ -128,6 +158,11 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
       return;
     }
 
+    if (stationDragging.current) {
+      setStationPoint(getCanvasPoint(e));
+      return;
+    }
+
     const pt = getCanvasPoint(e);
     setMousePos(pt);
   }, [isPanning, getCanvasPoint, setCanvasOffset]);
@@ -136,6 +171,7 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
     if (e.button === 1) {
       setIsPanning(false);
     }
+    stationDragging.current = false;
   }, []);
 
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -194,6 +230,16 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
         case 'Escape':
           if (activeTool === 'wall' && wallStart) {
             setWallStart(null);
+          } else if (activeTool === 'measure') {
+            if (measureStart) {
+              setMeasureStart(null);
+            } else {
+              setMeasureLine(null);
+              setActiveTool('select');
+            }
+          } else if (activeTool === 'station') {
+            setStationPoint(null);
+            setActiveTool('select');
           } else {
             setActiveTool('select');
           }
@@ -207,11 +253,13 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
         case '2': setActiveTool('ap'); break;
         case '3': setActiveTool('wall'); break;
         case '4': setActiveTool('erase'); break;
+        case '5': setActiveTool('measure'); break;
+        case '6': setActiveTool('station'); break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTool, wallStart, selectedAPId, selectedWallId,
+  }, [activeTool, wallStart, measureStart, selectedAPId, selectedWallId,
     setActiveTool, removeAccessPoint, removeWall,
     undo, redo, canUndo, canRedo]);
 
@@ -221,6 +269,8 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
       case 'ap': return 'crosshair';
       case 'wall': return 'crosshair';
       case 'erase': return 'not-allowed';
+      case 'measure': return 'crosshair';
+      case 'station': return 'crosshair';
       default: return 'default';
     }
   };
@@ -232,7 +282,7 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
       onMouseMove={handleMouseMove}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
-      onMouseLeave={() => setMousePos(null)}
+      onMouseLeave={() => { setMousePos(null); stationDragging.current = false; }}
     >
       {/* Heatmap canvas - behind SVG */}
       <div
@@ -337,6 +387,172 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
               style={{ pointerEvents: 'none' }}
             />
           )}
+
+          {/* ── Measurement overlay ─────────────────────────────────────── */}
+          {measureLine && (() => {
+            const dx = measureLine.end.x - measureLine.start.x;
+            const dy = measureLine.end.y - measureLine.start.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) / pixelsPerMeter;
+            const label = dist < 1 ? `${(dist * 100).toFixed(0)} cm` : `${dist.toFixed(2)} m`;
+            const mx = (measureLine.start.x + measureLine.end.x) / 2;
+            const my = (measureLine.start.y + measureLine.end.y) / 2;
+            return (
+              <g style={{ pointerEvents: 'none' }}>
+                <line
+                  x1={measureLine.start.x} y1={measureLine.start.y}
+                  x2={measureLine.end.x} y2={measureLine.end.y}
+                  stroke="#7c3aed"
+                  strokeWidth={2 / canvasZoom}
+                  strokeDasharray={`${8 / canvasZoom} ${4 / canvasZoom}`}
+                  strokeLinecap="round"
+                />
+                <circle cx={measureLine.start.x} cy={measureLine.start.y} r={4 / canvasZoom} fill="#7c3aed" stroke="white" strokeWidth={1.5 / canvasZoom} />
+                <circle cx={measureLine.end.x} cy={measureLine.end.y} r={4 / canvasZoom} fill="#7c3aed" stroke="white" strokeWidth={1.5 / canvasZoom} />
+                <text
+                  x={mx} y={my - 10 / canvasZoom}
+                  textAnchor="middle"
+                  fontSize={12 / canvasZoom}
+                  fill="#7c3aed"
+                  stroke="white"
+                  strokeWidth={3 / canvasZoom}
+                  paintOrder="stroke"
+                  fontWeight="700"
+                  fontFamily="system-ui, sans-serif"
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })()}
+
+          {/* Measure preview – first point placed, hovering second */}
+          {activeTool === 'measure' && measureStart && mousePos && (() => {
+            const dx = mousePos.x - measureStart.x;
+            const dy = mousePos.y - measureStart.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) / pixelsPerMeter;
+            const label = dist < 1 ? `${(dist * 100).toFixed(0)} cm` : `${dist.toFixed(2)} m`;
+            const mx = (measureStart.x + mousePos.x) / 2;
+            const my = (measureStart.y + mousePos.y) / 2;
+            return (
+              <g style={{ pointerEvents: 'none' }}>
+                <line
+                  x1={measureStart.x} y1={measureStart.y}
+                  x2={mousePos.x} y2={mousePos.y}
+                  stroke="#7c3aed"
+                  strokeWidth={1.5 / canvasZoom}
+                  strokeDasharray={`${6 / canvasZoom} ${3 / canvasZoom}`}
+                  strokeOpacity={0.6}
+                />
+                <circle cx={measureStart.x} cy={measureStart.y} r={4 / canvasZoom} fill="#7c3aed" stroke="white" strokeWidth={1.5 / canvasZoom} />
+                <text
+                  x={mx} y={my - 10 / canvasZoom}
+                  textAnchor="middle"
+                  fontSize={11 / canvasZoom}
+                  fill="#7c3aed"
+                  stroke="white"
+                  strokeWidth={3 / canvasZoom}
+                  paintOrder="stroke"
+                  fontFamily="system-ui, sans-serif"
+                  opacity={0.8}
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })()}
+
+          {/* ── Station overlay ──────────────────────────────────────────── */}
+          {stationPoint && (() => {
+            const topAPs = accessPoints
+              .filter(ap => ap.enabled)
+              .map(ap => ({
+                ap,
+                rssi: calculateRSSI(ap, stationPoint.x, stationPoint.y, pixelsPerMeter, walls, heatmapBand),
+              }))
+              .sort((a, b) => b.rssi - a.rssi)
+              .slice(0, 2);
+
+            return (
+              <g>
+                {/* Lines from station to top 2 APs */}
+                {topAPs.map(({ ap, rssi }) => {
+                  const quality = getSignalQuality(rssi);
+                  const lineColor = getSignalQualityColor(quality);
+                  const mx = (stationPoint.x + ap.x) / 2;
+                  const my = (stationPoint.y + ap.y) / 2;
+                  return (
+                    <g key={ap.id} style={{ pointerEvents: 'none' }}>
+                      <line
+                        x1={stationPoint.x} y1={stationPoint.y}
+                        x2={ap.x} y2={ap.y}
+                        stroke={ap.color}
+                        strokeWidth={2 / canvasZoom}
+                        strokeDasharray={`${8 / canvasZoom} ${4 / canvasZoom}`}
+                        strokeLinecap="round"
+                        opacity={0.85}
+                      />
+                      <text
+                        x={mx} y={my - 9 / canvasZoom}
+                        textAnchor="middle"
+                        fontSize={11 / canvasZoom}
+                        fill={lineColor}
+                        stroke="white"
+                        strokeWidth={3 / canvasZoom}
+                        paintOrder="stroke"
+                        fontWeight="700"
+                        fontFamily="system-ui, sans-serif"
+                      >
+                        {rssi.toFixed(0)} dBm
+                      </text>
+                      <text
+                        x={mx} y={my + 5 / canvasZoom}
+                        textAnchor="middle"
+                        fontSize={9 / canvasZoom}
+                        fill="#64748b"
+                        stroke="white"
+                        strokeWidth={2.5 / canvasZoom}
+                        paintOrder="stroke"
+                        fontFamily="system-ui, sans-serif"
+                      >
+                        {ap.name}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {/* Station marker */}
+                <g style={{ cursor: activeTool === 'station' ? 'grab' : 'default' }}>
+                  <circle
+                    cx={stationPoint.x} cy={stationPoint.y}
+                    r={14 / canvasZoom}
+                    fill="#f97316"
+                    fillOpacity={0.15}
+                    stroke="#f97316"
+                    strokeWidth={2 / canvasZoom}
+                  />
+                  <circle
+                    cx={stationPoint.x} cy={stationPoint.y}
+                    r={5 / canvasZoom}
+                    fill="#f97316"
+                  />
+                  <text
+                    x={stationPoint.x} y={stationPoint.y + 26 / canvasZoom}
+                    textAnchor="middle"
+                    fontSize={10 / canvasZoom}
+                    fill="#ea580c"
+                    stroke="white"
+                    strokeWidth={2.5 / canvasZoom}
+                    paintOrder="stroke"
+                    fontWeight="700"
+                    fontFamily="system-ui, sans-serif"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    Station
+                  </text>
+                </g>
+              </g>
+            );
+          })()}
 
           {/* Access Points */}
           {accessPoints.map(ap => (
@@ -486,6 +702,70 @@ export function PlannerCanvas({ onStatsUpdate }: Props) {
           pointerEvents: 'none',
         }}>
           Click on the floor plan to place an access point
+        </div>
+      )}
+      {activeTool === 'measure' && !measureStart && (
+        <div style={{
+          position: 'absolute',
+          top: 8,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(124,58,237,0.9)',
+          color: 'white',
+          borderRadius: 6,
+          padding: '4px 12px',
+          fontSize: 13,
+          pointerEvents: 'none',
+        }}>
+          点击起始点 / Click to set start point
+        </div>
+      )}
+      {activeTool === 'measure' && measureStart && (
+        <div style={{
+          position: 'absolute',
+          top: 8,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(124,58,237,0.9)',
+          color: 'white',
+          borderRadius: 6,
+          padding: '4px 12px',
+          fontSize: 13,
+          pointerEvents: 'none',
+        }}>
+          点击终止点 / Click to set end point · ESC to cancel
+        </div>
+      )}
+      {activeTool === 'station' && !stationPoint && (
+        <div style={{
+          position: 'absolute',
+          top: 8,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(234,88,12,0.9)',
+          color: 'white',
+          borderRadius: 6,
+          padding: '4px 12px',
+          fontSize: 13,
+          pointerEvents: 'none',
+        }}>
+          点击放置 Station / Click to place station
+        </div>
+      )}
+      {activeTool === 'station' && stationPoint && (
+        <div style={{
+          position: 'absolute',
+          top: 8,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(234,88,12,0.9)',
+          color: 'white',
+          borderRadius: 6,
+          padding: '4px 12px',
+          fontSize: 13,
+          pointerEvents: 'none',
+        }}>
+          拖动移动 / Drag to move · ESC to clear
         </div>
       )}
     </div>
